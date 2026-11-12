@@ -10,6 +10,7 @@ on:
       - web/**
       - agents.example.json
       - .github/workflows/pages.yml
+      - scripts/stamp-version.mjs
   workflow_dispatch:
 
 permissions:
@@ -36,6 +37,8 @@ jobs:
           cp -r web/. _site/
           cp agents.example.json _site/
           touch _site/.nojekyll
+          # new URLs for every deploy, so browsers never mix cached old modules with new ones
+          node scripts/stamp-version.mjs _site "${GITHUB_SHA::8}"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
