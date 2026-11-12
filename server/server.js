@@ -112,7 +112,25 @@ export function createOfficeServer(options = {}) {
   let sim = null;
   let boundPort = options.port ?? 4317;
 
+  // Claude Code session id -> its current task. A session handles one prompt at a
+  // time, so each prompt ("start") opens a new task and "Stop" ends it.
+  const sessions = new Map();
+  let taskCounter = 0;
+  const taskFor = (sid, mode) => {
+    const known = sessions.get(sid);
+    if (known && mode !== 'start') return { key: known, created: false };
+    if (mode === 'peek') return null; // nothing running for this session
+    const key = `${String(sid).slice(0, 8)}-${++taskCounter}`;
+    sessions.delete(sid);
+    sessions.set(sid, key);
+    if (sessions.size > 200) sessions.delete(sessions.keys().next().value); // sessions that never end
+    // a new prompt while the old one never reported Stop (you pressed Esc): the old task is over
+    return { key, created: true, previous: mode === 'start' ? known : undefined };
+  };
+
   const ctx = () => ({
+    taskFor,
+    endTask: (sid) => sessions.delete(sid),
     has: (id) => Boolean(state.agents[id]),
     main: state.roster.office.mainAgent,
     sharePrompts: Boolean(options.sharePrompts),
@@ -159,6 +177,8 @@ export function createOfficeServer(options = {}) {
     next.seq = state.seq;
     next.startedAt = state.startedAt;
     next.meeting = state.meeting;
+    next.tasks = state.tasks;
+    next.taskSeq = state.taskSeq;
     state = next;
     for (const w of roster.warnings || []) log('roster warning:', w);
     // the demo's queued steps may name agents that are gone: start it afresh

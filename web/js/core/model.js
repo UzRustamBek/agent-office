@@ -39,7 +39,7 @@ export const BLOCKED = new Set([STATUS.WAITING, STATUS.PERMISSION]);
 export const isActive = (s) => ACTIVE.has(s);
 export const isBlocked = (s) => BLOCKED.has(s);
 
-export const EVENT_TYPES = Object.freeze(['status', 'delegate', 'message', 'meeting']);
+export const EVENT_TYPES = Object.freeze(['status', 'delegate', 'message', 'meeting', 'task']);
 
 export const LIMITS = Object.freeze({
   idLen: 64,
@@ -51,6 +51,11 @@ export const LIMITS = Object.freeze({
   meetingSize: 12,
   meetingMinMs: 4000,
   meetingMaxMs: 120000,
+  taskIdLen: 64,
+  tasksKept: 40,
+  taskSteps: 8,
+  /** An unfinished task with no event for this long is closed as "abandoned". */
+  taskStaleMs: 20 * 60 * 1000,
 });
 
 export const DEFAULT_TIMING = Object.freeze({
@@ -89,12 +94,24 @@ export function normalizeEvent(raw, now = Date.now()) {
       status: raw.status,
       activity: clip(raw.activity, LIMITS.activityLen),
       tool: clip(raw.tool, 48) || null,
+      taskId: clip(raw.taskId, LIMITS.taskIdLen) || undefined,
       ts,
     };
   }
+  if (type === 'task') {
+    // A unit of work (one Claude Code prompt, one demo scenario): start it, then end it.
+    const id = clip(raw.id, LIMITS.taskIdLen);
+    if (!id) return null;
+    if (raw.action === 'end') {
+      const outcome = ['done', 'error', 'abandoned'].includes(raw.outcome) ? raw.outcome : 'done';
+      return { v: PROTOCOL_VERSION, type, action: 'end', id, outcome, ts };
+    }
+    if (raw.action !== 'start' || !isValidAgentId(raw.agent)) return null;
+    return { v: PROTOCOL_VERSION, type, action: 'start', id, agent: raw.agent, title: clip(raw.title, LIMITS.taskLen), ts };
+  }
   if (type === 'delegate') {
     if (!isValidAgentId(raw.from) || !isValidAgentId(raw.to) || raw.from === raw.to) return null;
-    return { v: PROTOCOL_VERSION, type, from: raw.from, to: raw.to, task: clip(raw.task, LIMITS.taskLen), ts };
+    return { v: PROTOCOL_VERSION, type, from: raw.from, to: raw.to, task: clip(raw.task, LIMITS.taskLen), taskId: clip(raw.taskId, LIMITS.taskIdLen) || undefined, ts };
   }
   if (type === 'meeting') {
     // A short stand-up before the work is split: the host and its people meet
@@ -110,6 +127,7 @@ export function normalizeEvent(raw, now = Date.now()) {
       host: raw.host,
       agents,
       topic: clip(raw.topic, LIMITS.taskLen),
+      taskId: clip(raw.taskId, LIMITS.taskIdLen) || undefined,
       durationMs: Math.round(Math.min(LIMITS.meetingMaxMs, Math.max(LIMITS.meetingMinMs, dur))),
       ts,
     };
@@ -137,7 +155,7 @@ function blankAgent(id, now) {
 
 /** Create the live state for a normalized roster. */
 export function createState(roster, now = Date.now()) {
-  const state = { roster, agents: {}, log: [], seq: 0, startedAt: now, meeting: null };
+  const state = { roster, agents: {}, log: [], seq: 0, startedAt: now, meeting: null, tasks: [], taskSeq: 0 };
   for (const a of roster.agents) state.agents[a.id] = blankAgent(a.id, now);
   return state;
 }
@@ -170,6 +188,82 @@ export function ensureAgent(state, id, now = Date.now()) {
   });
   state.agents[id] = blankAgent(id, now);
   return true;
+}
+
+// --- tasks -------------------------------------------------------------------
+// A task is one unit of work somebody asked for: it has an owner (who got it),
+// the agents that took part, a live activity line and a few counters.
+
+const findTask = (state, id) => state.tasks.find((t) => t.id === id);
+
+function openTask(state, id, agent, title, now) {
+  let t = findTask(state, id);
+  if (t) {
+    if (title && !t.title) t.title = title;
+    return t;
+  }
+  state.taskSeq += 1;
+  t = { id, n: state.taskSeq, title: title || '', agent, startedAt: now, endedAt: null, outcome: null, lastEventAt: now, tools: 0, errors: 0, agents: [agent], steps: [] };
+  state.tasks.push(t);
+  // keep every unfinished task, trim the oldest finished ones
+  while (state.tasks.length > LIMITS.tasksKept) {
+    const i = state.tasks.findIndex((x) => x.endedAt);
+    if (i === -1) break;
+    state.tasks.splice(i, 1);
+  }
+  return t;
+}
+
+function closeTask(t, outcome, now) {
+  if (t.endedAt) return;
+  t.endedAt = now;
+  t.outcome = outcome;
+}
+
+/** An event that belongs to a task updates its counters, crew and activity trail. */
+function touchTask(state, evt, now) {
+  if (!evt.taskId) return;
+  const t = findTask(state, evt.taskId);
+  if (!t || t.endedAt) return;
+  t.lastEventAt = now;
+  const join = (id) => {
+    if (id && !t.agents.includes(id)) t.agents.push(id);
+  };
+  if (evt.type === 'status') {
+    join(evt.agent);
+    if (evt.tool) t.tools += 1;
+    if (evt.status === STATUS.ERROR) t.errors += 1;
+    if (evt.activity && (ACTIVE.has(evt.status) || BLOCKED.has(evt.status)) && t.steps[t.steps.length - 1]?.text !== evt.activity) {
+      t.steps.push({ ts: evt.ts, agent: evt.agent, text: evt.activity });
+      if (t.steps.length > LIMITS.taskSteps) t.steps.shift();
+    }
+  } else if (evt.type === 'delegate') {
+    join(evt.from);
+    join(evt.to);
+  } else if (evt.type === 'meeting') {
+    join(evt.host);
+    for (const id of evt.agents) join(id);
+  }
+}
+
+/** Open tasks first (newest first), then finished ones (most recent first). */
+export function sortedTasks(state) {
+  const tasks = state.tasks || [];
+  const open = tasks.filter((t) => !t.endedAt).sort((a, b) => b.startedAt - a.startedAt);
+  const done = tasks.filter((t) => t.endedAt).sort((a, b) => b.endedAt - a.endedAt);
+  return [...open, ...done];
+}
+
+/**
+ * What a task is doing right now, for the dashboard.
+ * 'needs-you' beats 'meeting' beats 'working'; finished tasks report their outcome.
+ */
+export function taskPhase(state, t, now = Date.now()) {
+  if (t.endedAt) return t.outcome === 'error' ? 'failed' : t.outcome === 'abandoned' ? 'stale' : 'done';
+  if (t.agents.some((id) => BLOCKED.has(state.agents[id]?.status))) return 'needs-you';
+  const m = state.meeting;
+  if (m && now < m.endsAt && t.agents.includes(m.host)) return 'meeting';
+  return 'working';
 }
 
 function pushLog(state, entry) {
@@ -214,6 +308,20 @@ export function applyEvent(state, evt, now = Date.now()) {
   evt = { ...evt };
   for (const k of ['agent', 'from', 'to', 'host']) if (evt[k]) evt[k] = known(evt[k]);
   if (evt.agents) evt.agents = evt.agents.map(known);
+
+  if (evt.type === 'task') {
+    if (evt.action === 'start') {
+      out.rosterChanged = ensureAgent(state, evt.agent, now);
+      openTask(state, evt.id, evt.agent, evt.title, now);
+      out.changed.push(evt.agent);
+    } else {
+      const t = findTask(state, evt.id);
+      if (t) closeTask(t, evt.outcome, now);
+    }
+    return out;
+  }
+
+  touchTask(state, evt, now);
 
   if (evt.type === 'status') {
     out.rosterChanged = ensureAgent(state, evt.agent, now);
@@ -260,6 +368,7 @@ export function tick(state, now = Date.now(), timing = DEFAULT_TIMING) {
     changed.push(state.meeting.host, ...state.meeting.agents);
     state.meeting = null;
   }
+  for (const t of state.tasks || []) if (!t.endedAt && now - t.lastEventAt >= LIMITS.taskStaleMs) closeTask(t, 'abandoned', now);
   for (const agent of Object.values(state.agents)) {
     const age = now - agent.since;
     let next = null;
@@ -309,6 +418,8 @@ export function snapshot(state) {
     log: state.log.slice(-120),
     startedAt: state.startedAt,
     meeting: state.meeting,
+    tasks: state.tasks || [],
+    taskSeq: state.taskSeq || 0,
   };
 }
 
@@ -321,5 +432,7 @@ export function restore(snap) {
     seq: (snap.log && snap.log.length ? snap.log[snap.log.length - 1].seq : 0) || 0,
     startedAt: snap.startedAt || Date.now(),
     meeting: snap.meeting && Number.isFinite(snap.meeting.endsAt) ? snap.meeting : null,
+    tasks: Array.isArray(snap.tasks) ? snap.tasks : [],
+    taskSeq: Number.isFinite(snap.taskSeq) ? snap.taskSeq : 0,
   };
 }

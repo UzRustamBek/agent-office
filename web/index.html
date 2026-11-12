@@ -86,6 +86,15 @@
           <ol id="log-list" aria-live="off"></ol>
         </div>
 
+        <section class="tasks glass" id="tasks" data-open="true" aria-label="Tasks" data-i18n-aria="tasks.title">
+          <button class="tasks-head" id="tasks-toggle" type="button" aria-expanded="true">
+            <span class="tasks-title" data-i18n="tasks.title">Tasks</span>
+            <span class="tasks-sum" id="tasks-sum"></span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg>
+          </button>
+          <div class="tasks-body" id="tasks-list"></div>
+        </section>
+
         <button class="now glass" id="now" type="button" hidden><i></i><span class="now-tag" data-i18n="now.label">Now</span><b id="now-name"></b><span id="now-text"></span></button>
 
         <aside class="drawer glass" id="drawer" aria-label="Agent details" data-i18n-aria="aria.details" hidden></aside>

@@ -163,8 +163,14 @@ test('simulator: assign gives a specific agent a task, and refuses while busy', 
   assert.equal(sim.assign('b', 0), false);
   assert.equal(sim.assign('zzz', 0), false);
   for (let t = 0; t < 60_000; t += 50) sim.tick(t);
-  assert.ok(events.length > 0 && events.every((e) => e.agent === 'b'));
-  assert.equal(events.at(-1).status, 'done');
+  const statuses = events.filter((e) => e.type === 'status');
+  assert.ok(statuses.length > 0 && statuses.every((e) => e.agent === 'b'));
+  assert.equal(statuses.at(-1).status, 'done');
+  // the assignment is one task: it starts, its statuses carry the id, and it ends
+  const start = events.find((e) => e.type === 'task' && e.action === 'start');
+  assert.equal(start.agent, 'b');
+  assert.ok(statuses.every((e) => e.taskId === start.id));
+  assert.equal(events.at(-1).action, 'end');
 });
 
 test('hooks: a group shared with the user keeps the user hook on install and uninstall', () => {

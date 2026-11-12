@@ -61,7 +61,7 @@ ${c.bold('import')}
 
 ${c.bold('hooks')}
   print   [--all] [--agent <id>]
-  install [--scope user|project|local] [--all] [--agent <id>] [--write]
+  install [--scope user|project|local] [--all] [--agent <id>] [--share-prompts] [--write]
   uninstall [--scope ...] [--write]        (install/uninstall only change files with --write)
   status
 
@@ -73,6 +73,8 @@ ${c.bold('autostart')}
 ${c.bold('emit')}
   --agent <id> --status <${STATUS_LIST.join('|')}> [--activity <text>] [--tool <name>]
   --delegate <from>:<to> [--task <text>]
+  --task-start <id> --agent <id> [--title <text>]     --task-end <id> [--outcome done|error|abandoned]
+  --agent <id> --status ... --task-id <id>            (attach a status to a task)
 `;
 
 /** Tiny argv parser: --key value, --flag, positional list. */
@@ -208,12 +210,12 @@ function cmdImport(argv) {
 
 // --- hooks -------------------------------------------------------------------
 function cmdHooks(argv) {
-  const { flags, positional } = parseArgs(argv, ['all', 'write']);
+  const { flags, positional } = parseArgs(argv, ['all', 'write', 'share-prompts']);
   const action = positional[0] || 'print';
   const scope = typeof flags.scope === 'string' ? flags.scope : 'user';
   const pinned = typeof flags.agent === 'string' ? flags.agent : undefined;
   if (pinned && !/^[\p{L}\p{N}._-]{1,64}$/u.test(pinned)) return fail('--agent may only contain letters, digits, dot, dash and underscore');
-  const config = buildHookConfig({ all: Boolean(flags.all), pinnedAgent: pinned });
+  const config = buildHookConfig({ all: Boolean(flags.all), pinnedAgent: pinned, sharePrompts: Boolean(flags['share-prompts']) });
 
   try {
     if (action === 'print') {
@@ -324,7 +326,13 @@ async function cmdEmit(argv) {
   const servers = liveServers();
   if (!servers.length) return fail('no running Agent Office server found. Start one with `agent-office start`.');
   let event;
-  if (typeof flags.delegate === 'string') {
+  if (typeof flags['task-start'] === 'string' || typeof flags['task-end'] === 'string') {
+    // task lifecycle for tools that are not Claude Code: --task-start <id> --agent <id> [--title <text>]  /  --task-end <id> [--outcome done|error|abandoned]
+    if (typeof flags['task-start'] === 'string') {
+      if (typeof flags.agent !== 'string') return fail('--task-start needs --agent');
+      event = { type: 'task', action: 'start', id: flags['task-start'], agent: flags.agent, title: typeof flags.title === 'string' ? flags.title : '' };
+    } else event = { type: 'task', action: 'end', id: flags['task-end'], outcome: typeof flags.outcome === 'string' ? flags.outcome : 'done' };
+  } else if (typeof flags.delegate === 'string') {
     const [from, to] = flags.delegate.split(':');
     if (!from || !to) return fail('--delegate expects <from>:<to>');
     event = { type: 'delegate', from, to, task: typeof flags.task === 'string' ? flags.task : '' };
@@ -337,6 +345,7 @@ async function cmdEmit(argv) {
       status: flags.status,
       activity: typeof flags.activity === 'string' ? flags.activity : '',
       tool: typeof flags.tool === 'string' ? flags.tool : null,
+      taskId: typeof flags['task-id'] === 'string' ? flags['task-id'] : undefined,
     };
   }
   try {

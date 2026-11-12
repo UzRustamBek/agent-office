@@ -36,6 +36,19 @@ agent-office autostart uninstall --write
 
 It writes one small file (Windows: a hidden script in the Startup folder; macOS: a LaunchAgent; Linux: an autostart entry) that runs `agent-office start --once` in the folder you installed from, so your `agents.local.json` is found. `--once` exits quietly when an office is already running, so you never get two. `uninstall` removes only that file, and refuses to touch a file it did not create.
 
+## Tasks
+
+Every hook event carries the Claude Code `session_id`, so the server can tell windows apart. A **task** is one prompt of one session: `UserPromptSubmit` opens it, `Stop` finishes it, and everything in between (tool calls, subagents, permission requests, errors) is counted on that task's card. If a new prompt arrives while the old one never reported `Stop` (you pressed Esc), the old task closes as "no activity". A task with no events for 20 minutes closes the same way. If the server starts in the middle of a session, the first tool call opens a task for it.
+
+The task text is private by default, so cards read "Task #3". To show the first words of your prompt, opt in on both sides:
+
+```bash
+agent-office hooks install --share-prompts --write    # the hook then sends the first 200 characters
+agent-office start --share-prompts                    # the server then shows them
+```
+
+The text goes only to the local server (and to anyone who can open its page), so leave it off if you type secrets into prompts.
+
 ## What each event does
 
 | Hook event | Result in the office |

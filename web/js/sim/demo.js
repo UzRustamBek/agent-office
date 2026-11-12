@@ -56,7 +56,17 @@ export function createSimulator({ getRoster, emit, seed = 7, speed = 1, maxScena
     queue.sort((a, b) => a.at - b.at);
   };
 
-  const status = (agent, st, activity = '', tool = null, ts) => emit({ type: 'status', agent, status: st, activity, tool, ts });
+  // every scenario is one task; its events carry the task id so the dashboard can follow it
+  const taskOf = new Map(); // agent id -> task id
+  let taskCount = 0;
+  const status = (agent, st, activity = '', tool = null, ts) => emit({ type: 'status', agent, status: st, activity, tool, taskId: taskOf.get(agent), ts });
+  const beginTask = (agentId, title, now) => {
+    const id = `demo-${++taskCount}`;
+    taskOf.set(agentId, id);
+    emit({ type: 'task', action: 'start', id, agent: agentId, title, ts: now });
+    return id;
+  };
+  const endTask = (id, at) => schedule(at, () => emit({ type: 'task', action: 'end', id, outcome: 'done', ts: Date.now() }));
 
   /** Build the timeline for one worker and return the time it finishes. */
   function planWorker(agent, startAt) {
@@ -90,6 +100,7 @@ export function createSimulator({ getRoster, emit, seed = 7, speed = 1, maxScena
     schedule(t, () => {
       status(id, STATUS.DONE, 'Finished', null, Date.now());
       busy.delete(id);
+      taskOf.delete(id);
     });
     return t;
   }
@@ -108,7 +119,10 @@ export function createSimulator({ getRoster, emit, seed = 7, speed = 1, maxScena
 
     const crew = shuffle(rng, free).slice(0, 1 + Math.floor(rng() * Math.min(depth === 0 ? 3 : 2, free.length)));
     busy.add(agent.id);
-    for (const m of crew) busy.add(m.id); // reserved for this task from the start
+    for (const m of crew) {
+      busy.add(m.id); // reserved for this task from the start
+      taskOf.set(m.id, taskOf.get(agent.id));
+    }
     let t = startAt;
     schedule(t, () => status(agent.id, STATUS.THINKING, `Planning: ${task}`, null, Date.now()));
     t += sc(range(rng, 1400, 2400));
@@ -117,7 +131,7 @@ export function createSimulator({ getRoster, emit, seed = 7, speed = 1, maxScena
       // speed does not follow the demo speed, so the meeting has a real-time floor.
       const durationMs = Math.max(20000, sc(26000));
       schedule(t, () => {
-        emit({ type: 'meeting', host: agent.id, agents: crew.map((m) => m.id), topic: task, durationMs, ts: Date.now() });
+        emit({ type: 'meeting', host: agent.id, agents: crew.map((m) => m.id), topic: task, taskId: taskOf.get(agent.id), durationMs, ts: Date.now() });
         status(agent.id, STATUS.DELEGATING, `Kick-off meeting: ${task}`, null, Date.now());
       });
       t += durationMs;
@@ -127,7 +141,7 @@ export function createSimulator({ getRoster, emit, seed = 7, speed = 1, maxScena
     let latest = t;
     crew.forEach((member, i) => {
       const at = t + sc(300 + i * 700);
-      schedule(at, () => emit({ type: 'delegate', from: agent.id, to: member.id, task, ts: Date.now() }));
+      schedule(at, () => emit({ type: 'delegate', from: agent.id, to: member.id, task, taskId: taskOf.get(agent.id), ts: Date.now() }));
       latest = Math.max(latest, planTree(member, at + sc(500), task, depth + 1));
     });
     t = latest + sc(400);
@@ -138,6 +152,7 @@ export function createSimulator({ getRoster, emit, seed = 7, speed = 1, maxScena
     schedule(t, () => {
       status(agent.id, STATUS.DONE, depth === 0 ? 'Task complete' : 'Finished', null, Date.now());
       busy.delete(agent.id);
+      taskOf.delete(agent.id);
     });
     return t;
   }
@@ -158,7 +173,9 @@ export function createSimulator({ getRoster, emit, seed = 7, speed = 1, maxScena
     else if (managers.length && roll < 0.85) lead = pick(rng, managers);
     else lead = pick(rng, free);
     scenarios += 1;
+    const taskId = beginTask(lead.id, task, now);
     const end = planTree(lead, now, task, 0);
+    endTask(taskId, end + 60);
     schedule(end + 100, () => (scenarios -= 1));
     return true;
   }
@@ -178,7 +195,9 @@ export function createSimulator({ getRoster, emit, seed = 7, speed = 1, maxScena
       const agent = getRoster().agents.find((a) => a.id === agentId);
       if (!agent || busy.has(agentId)) return false;
       scenarios += 1;
+      const taskId = beginTask(agent.id, pick(rng, TASKS), now);
       const end = planWorker(agent, now);
+      endTask(taskId, end + 60);
       schedule(end + 100, () => (scenarios -= 1));
       return true;
     },

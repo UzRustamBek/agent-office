@@ -117,6 +117,10 @@ node bin/agent-office.js autostart install --write
 
 Faqat bitta kichik fayl yoziladi (Windows: Startup papkasida yashirin skript). `autostart uninstall --write` uni olib tashlaydi. Batafsil: [docs/HOOKS.md](docs/HOOKS.md).
 
+## Vazifalar paneli
+
+Ofis faqat harakatni emas, **qaysi vazifa ko‘rib chiqilayotganini** ham ko‘rsatadi: har vazifa uchun alohida kartochka (bosqichi, vaqti, rahbari, ishtirokchilari, oxirgi qadami). Ikkita Claude Code oynasi ikkita vazifa bo‘ladi. Vazifa matni sukut bo‘yicha yashirin; ko‘rsatish uchun `hooks install --share-prompts --write` va `start --share-prompts`.
+
 ## Nimalar bor
 
 | | |

@@ -37,6 +37,12 @@ Everything that changes the office is one of four event types. All fields are va
 // meeting table, and after durationMs (4 s to 2 min) everyone returns to work.
 { "type": "meeting", "host": "director", "agents": ["architect", "writer"],
   "topic": "Launch plan", "durationMs": 20000 }
+
+// Tasks (the dashboard): one unit of work. Start it, tag status / delegate / meeting
+// events with its id, end it. Unfinished tasks with no events for 20 min close as "abandoned".
+{ "type": "task", "action": "start", "id": "release-42", "agent": "director", "title": "Ship v2" }
+{ "type": "status", "agent": "backend", "status": "typing", "taskId": "release-42" }
+{ "type": "task", "action": "end", "id": "release-42", "outcome": "done" }   // done | error | abandoned
 ```
 
 | Field | Rules |

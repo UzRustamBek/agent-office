@@ -123,6 +123,7 @@ or `POST /api/events` with the bearer token printed in `~/.agent-office/servers/
 | **Office** | Departments become carpeted zones with a desk per agent, plus a lounge, pantry and meeting room. The layout is generated from your roster (1 to 120 agents). |
 | **Hierarchy** | An org chart you can walk through: chief on top, then department heads, then the people who do the work, joined by reporting lines. Gold and steel nameplates mark chiefs and managers. See [Hierarchy](docs/AGENTS-FORMAT.md#hierarchy). |
 | **Characters** | Drawn in code (no image files). Six skin tones, eight hairstyles, accessories, team-colored shirts, walk cycles in four directions, and a pose for every state. |
+| **Tasks** | A dashboard of what is being handled right now: one card per task with its phase, timer, lead, crew, tool calls and latest step. Two Claude Code windows are two tasks. Hover a card to ring its crew; task text is shown only if you opt in. |
 | **Director's cut** | One key (`C`) turns the camera into a director: it films the kick-off meeting, rotates between busy agents and zooms out when it is quiet. `Ctrl+K` jumps to any agent; three looks (Classic, Neon night, Cozy sunset) change the mood. |
 | **Meetings** | A new task starts with a kick-off meeting: the host at the whiteboard, the team around the table, sticky notes filling the agenda, task cards dealt out, a speaker bubble going round and a countdown banner. Then the tasks fly out as envelopes. |
 | **Life** | Working agents stay at their desks. Idle ones may stroll to the coffee machine or sofa (rarely by default; the *Breaks* setting makes it never or often) and walk back when work arrives. |
@@ -143,6 +144,9 @@ Settings (gear icon): theme, language, name tags, lighting, **breaks**, reduced 
   <tr>
     <td width="50%"><img src="docs/assets/night-details.jpg" alt="Night lighting with glowing monitors and the agent details drawer"><br/><sub><b>Night mode</b>: monitors glow, click an agent for its drawer: tools, skills, counters, history.</sub></td>
     <td width="50%"><img src="docs/assets/light-uz.jpg" alt="Light theme with the Uzbek interface"><br/><sub><b>Light theme, Oʻzbekcha UI</b>: the same office, English / Uzbek / Russian.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/assets/tasks.jpg" alt="The tasks dashboard: running, meeting and finished tasks with their crews" width="100%"><br/><sub><b>Tasks</b>: what is being handled right now, who leads it, who takes part and what the latest step is.</sub></td>
   </tr>
   <tr>
     <td colspan="2"><img src="docs/assets/director.jpg" alt="Director's cut in the Neon night look: the camera films the kick-off meeting with letterbox bars" width="100%"><br/><sub><b>Director's cut</b> in the Neon night look: the camera follows the action by itself.</sub></td>

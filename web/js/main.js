@@ -204,6 +204,7 @@ function rebuild({ keepView = false } = {}) {
 function refreshAll() {
   for (const id of Object.keys(app.state.agents)) app.ui.refreshRow(id);
   app.ui.renderStats(summarize(app.state));
+  app.ui.renderTasks();
   app.ui.updateDrawer();
   app.ui.applyFilter();
 }
@@ -229,6 +230,7 @@ function ingest(raw) {
   }
   app.ui.renderStats(summarize(app.state));
   app.ui.renderNow();
+  app.ui.renderTasks();
   app.ui.updateDrawer();
   if (app.ui.filter !== 'all') app.ui.applyFilter();
   if (app.settings.sound && evt.type === 'status' && before !== evt.status && NOTIFY.has(evt.status)) {
@@ -304,6 +306,7 @@ setInterval(() => {
   for (const id of tick(app.state, Date.now())) app.ui.refreshRow(id);
   app.ui.renderStats(summarize(app.state));
   app.ui.renderNow();
+  app.ui.renderTasks();
   app.ui.updateDrawer();
   if (app.ui.filter !== 'all') app.ui.applyFilter();
 }, 1000);
@@ -364,6 +367,7 @@ async function boot() {
   app.ui.setConn('connecting');
   document.getElementById('legend').dataset.open = String(app.settings.legendOpen);
   document.getElementById('log').dataset.open = String(app.settings.logOpen);
+  app.ui.setTasksOpen(app.settings.tasksOpen !== false && window.innerWidth > 900);
   app.ui.reserveForLog();
 
   if (!params.has('demo')) {

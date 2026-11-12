@@ -1,7 +1,7 @@
 // DOM user interface: roster, details drawer, activity log, settings, toasts.
 // Text from rosters or events is always inserted with textContent, never as HTML.
 
-import { ACTIVE, BLOCKED, STATUS, STATUS_LIST } from '../core/model.js';
+import { ACTIVE, BLOCKED, STATUS, STATUS_LIST, sortedTasks, taskPhase } from '../core/model.js';
 import { defaultLook } from '../core/roster.js';
 import { drawCharacter } from '../office/character.js';
 import { STATUS_COLOR } from '../office/palette.js';
@@ -127,6 +127,11 @@ export class UI {
     $('btn-zoom-in').addEventListener('click', () => this.app.renderer.zoomBy(1.3));
     $('btn-zoom-out').addEventListener('click', () => this.app.renderer.zoomBy(1 / 1.3));
     $('btn-fit').addEventListener('click', () => this.app.renderer.fit());
+    $('tasks-toggle').addEventListener('click', () => {
+      const open = $('tasks').dataset.open !== 'false';
+      this.setTasksOpen(!open);
+      this.app.updateSettings({ tasksOpen: !open });
+    });
     $('btn-cine').addEventListener('click', () => this.app.renderer.setCinema(!this.app.renderer.cinema));
     $('btn-palette').addEventListener('click', () => this.app.palette?.open());
     $('now').addEventListener('click', () => {
@@ -225,6 +230,128 @@ export class UI {
     el.dataset.mode = mode;
     this.$('conn-text').textContent = this.t(`conn.${mode}`);
     el.title = this.t(`conn.${mode}.title`) === `conn.${mode}.title` ? '' : this.t(`conn.${mode}.title`);
+  }
+
+  setTasksOpen(open) {
+    this.$('tasks').dataset.open = String(open);
+    this.$('tasks-toggle').setAttribute('aria-expanded', String(open));
+    document.body.dataset.tasks = String(open);
+  }
+
+  // --- tasks dashboard ---------------------------------------------------------
+  /** Cards for the tasks being worked on (and the last few finished ones). Updated in place, once a second. */
+  renderTasks() {
+    const state = this.state;
+    if (!state) return;
+    const t = this.t;
+    const now = Date.now();
+    const all = sortedTasks(state);
+    const open = all.filter((x) => !x.endedAt);
+    const finished = all.filter((x) => x.endedAt);
+    const shown = [...open.slice(0, 6), ...finished.slice(0, Math.max(2, 6 - Math.min(open.length, 4)))];
+    this.$('tasks-sum').textContent = t('tasks.sum', { run: open.length, done: finished.filter((x) => x.outcome === 'done').length });
+    this.$('tasks').dataset.busy = String(open.length > 0);
+
+    const host = this.$('tasks-list');
+    this.taskCards ||= new Map();
+    const keep = new Set(shown.map((x) => x.id));
+    for (const [id, card] of this.taskCards) {
+      if (!keep.has(id)) {
+        card.el.remove();
+        this.taskCards.delete(id);
+      }
+    }
+    host.querySelector('.tasks-empty')?.remove();
+    if (!shown.length) {
+      host.append(h('p', { class: 'tasks-empty', text: t('tasks.empty') }));
+      return;
+    }
+    const byId = new Map(state.roster.agents.map((a) => [a.id, a]));
+    let prev = null;
+    for (const task of shown) {
+      let card = this.taskCards.get(task.id);
+      if (!card) {
+        card = this._buildTaskCard(task);
+        this.taskCards.set(task.id, card);
+      }
+      // keep the DOM order equal to the sorted order
+      if (prev ? card.el.previousElementSibling !== prev : host.firstElementChild !== card.el) {
+        if (prev) prev.after(card.el);
+        else host.prepend(card.el);
+      }
+      prev = card.el;
+
+      const phase = taskPhase(state, task, now);
+      card.el.dataset.phase = phase;
+      const owner = byId.get(task.agent);
+      card.title.textContent = task.title || t('tasks.untitled', { n: task.n });
+      card.title.title = task.title ? task.title : t('tasks.private');
+      card.phase.textContent = t(`tasks.phase.${phase}`);
+      card.time.textContent = fmtDuration((task.endedAt || now) - task.startedAt);
+      const meta = [t('tasks.owner', { name: owner?.name || task.agent })];
+      if (task.agents.length > 1) meta.push(t('tasks.agents', { n: task.agents.length }));
+      if (task.tools) meta.push(t('tasks.tools', { n: task.tools }));
+      if (task.errors) meta.push(t('tasks.errors', { n: task.errors }));
+      card.meta.textContent = meta.join(' · ');
+
+      const last = task.steps[task.steps.length - 1];
+      card.step.textContent = last ? `${byId.get(last.agent)?.name || last.agent}: ${last.text}` : '';
+      card.step.hidden = !last;
+
+      // the crew: one dot per agent, ringed in the colour of what it is doing now
+      const sig = task.agents.map((id) => `${id}:${state.agents[id]?.status}`).join('|') + `|${this.app.settings.lang}`;
+      if (card.sig !== sig) {
+        card.sig = sig;
+        card.crew.replaceChildren(
+          ...task.agents.slice(0, 9).map((id) => {
+            const a = byId.get(id);
+            const st = state.agents[id]?.status || STATUS.IDLE;
+            const dept = a ? this.deptOf(a) : null;
+            return h('i', {
+              style: { '--c': dept?.color || '#8b93a7', '--st': STATUS_COLOR[st] || STATUS_COLOR.idle },
+              dataset: { active: String(ACTIVE.has(st) || BLOCKED.has(st)) },
+              title: `${a?.name || id}: ${this.statusLabel(st)}`,
+              text: (a?.name || id).slice(0, 1).toUpperCase(),
+            });
+          }),
+          ...(task.agents.length > 9 ? [h('em', { text: `+${task.agents.length - 9}` })] : []),
+        );
+      }
+    }
+  }
+
+  _buildTaskCard(task) {
+    const title = h('b', { class: 'task-title' });
+    const phase = h('span', { class: 'task-phase' });
+    const time = h('time', { class: 'task-time' });
+    const meta = h('small', { class: 'task-meta' });
+    const step = h('p', { class: 'task-step' });
+    const crew = h('div', { class: 'task-crew' });
+    const el = h(
+      'button',
+      {
+        class: 'task',
+        type: 'button',
+        dataset: { id: task.id },
+        onclick: () => this.app.actions.selectAgent(task.agent, { focus: true }),
+        onpointerenter: () => this.setSpotlight(task.id),
+        onpointerleave: () => this.setSpotlight(null),
+        onfocus: () => this.setSpotlight(task.id),
+        onblur: () => this.setSpotlight(null),
+      },
+      h('div', { class: 'task-top' }, phase, time),
+      title,
+      meta,
+      step,
+      crew,
+    );
+    return { el, title, phase, time, meta, step, crew, sig: '' };
+  }
+
+  /** Ring the agents that work on a task while the pointer is on its card. */
+  setSpotlight(taskId) {
+    const task = taskId ? this.state.tasks.find((x) => x.id === taskId) : null;
+    this.app.renderer.spotlight = task ? new Set(task.agents) : null;
   }
 
   /** Cinema button state (the camera can also stop by itself when you move it). */

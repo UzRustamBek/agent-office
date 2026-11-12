@@ -19,6 +19,7 @@ export function defaultSettings() {
     sound: false,
     speed: 1,
     logOpen: true,
+    tasksOpen: true,
     legendOpen: false,
   };
 }

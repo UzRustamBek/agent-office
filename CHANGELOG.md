@@ -2,6 +2,14 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.4.0]
+
+### Added
+- **Tasks dashboard**: a panel with one card per task being worked on, so you can see *what* is being handled, not just that agents move. Each card shows the phase (working, in a meeting, needs you, done, failed, no activity), the elapsed time, who leads it, the agents that took part, tool calls and errors, and the latest step. Hover a card to ring its crew in the office; click to jump to its lead. The last finished tasks stay below for context.
+- A task is one Claude Code prompt (or one demo scenario). Hooks give every event its session, so two windows are two tasks instead of one mixed-up agent; `Stop` finishes only its own task, and a new prompt closes an interrupted one. Unfinished tasks with no events for 20 minutes close as "no activity".
+- New `task` event (`start` / `end`) and an optional `taskId` on status, delegate and meeting events; `agent-office emit --task-start/--task-end/--task-id` for other tools.
+- `hooks install --share-prompts` puts the first words of your prompt on the card (off by default; the text stays on this machine, shown only when the server also runs with `--share-prompts`).
+
 ## [1.3.0]
 
 ### Added

@@ -29,6 +29,7 @@ export class OfficeRenderer {
     this.selectedId = null;
     this.hoverId = null;
     this.followId = null;
+    this.spotlight = null;
     this.userMoved = false;
     this.staticKey = '';
     this.staticCanvas = document.createElement('canvas');
@@ -526,8 +527,9 @@ export class OfficeRenderer {
       const selected = ch.id === this.selectedId;
       const hover = ch.id === this.hoverId;
 
-      if (selected || hover) {
-        ctx.strokeStyle = selected ? '#ffffff' : 'rgba(255,255,255,0.65)';
+      const lit = Boolean(this.spotlight?.has(ch.id)); // the crew of the task under the mouse
+      if (selected || hover || lit) {
+        ctx.strokeStyle = selected ? '#ffffff' : hover ? 'rgba(255,255,255,0.65)' : '#ffd166';
         ctx.lineWidth = 2 * u;
         if (sink > 0) {
           // seated: outline the visible part of the character

@@ -33,16 +33,17 @@ function q(p) {
   return `"${p.replace(/"/g, '\\"')}"`;
 }
 
-export function hookCommand(scriptPath = hookScriptPath(), pinnedAgent) {
+export function hookCommand(scriptPath = hookScriptPath(), pinnedAgent, sharePrompts = false) {
   const unix = scriptPath.replace(/\\/g, '/');
   const cmd = `node ${q(unix)}`;
-  return pinnedAgent ? `AGENT_OFFICE_AGENT=${pinnedAgent} ${cmd}` : cmd;
+  const env = [pinnedAgent ? `AGENT_OFFICE_AGENT=${pinnedAgent}` : '', sharePrompts ? 'AGENT_OFFICE_SHARE_PROMPTS=1' : ''].filter(Boolean);
+  return env.length ? `${env.join(' ')} ${cmd}` : cmd;
 }
 
 /** The `hooks` section to merge into a Claude Code settings file. */
-export function buildHookConfig({ all = false, scriptPath, pinnedAgent } = {}) {
+export function buildHookConfig({ all = false, scriptPath, pinnedAgent, sharePrompts = false } = {}) {
   const events = all ? [...CORE_EVENTS, ...EXTRA_EVENTS] : CORE_EVENTS;
-  const command = hookCommand(scriptPath, pinnedAgent);
+  const command = hookCommand(scriptPath, pinnedAgent, sharePrompts);
   const hooks = {};
   for (const ev of events) {
     const entry = { hooks: [{ type: 'command', command, timeout: 3 }] };

@@ -89,24 +89,49 @@ export function fromClaudeHook(payload, ctx) {
   const ts = Date.now();
   const agent = resolveAgent(payload, ctx);
   if (!agent) return [];
-  const status = (st, activity = '', tool = null, who = agent) => ({ type: 'status', agent: who, status: st, activity, tool, ts });
+  // Every event of a Claude Code session belongs to that session's current task
+  // (one task per prompt). The server keeps the session -> task map (`ctx.taskFor`).
+  const sid = typeof payload.session_id === 'string' ? payload.session_id : '';
+  let task = null;
+  const join = (mode) => {
+    task = sid && typeof ctx.taskFor === 'function' ? ctx.taskFor(sid, mode) : null;
+    return task;
+  };
+  const taskId = () => (task ? task.key : undefined);
+  const status = (st, activity = '', tool = null, who = agent) => ({ type: 'status', agent: who, status: st, activity, tool, taskId: taskId(), ts });
+  const startEvent = (title = '') => ({ type: 'task', action: 'start', id: task.key, agent: ctx.main || agent, title, ts });
+  const endEvent = (outcome) => {
+    const e = { type: 'task', action: 'end', id: task.key, outcome, ts };
+    ctx.endTask?.(sid);
+    return e;
+  };
+  /** Work events can be the first thing we see of a session (server started late): open its task then. */
+  const withStart = (events) => (task?.created ? [startEvent(), ...events] : events);
 
   switch (name) {
     case 'SessionStart':
       return [status(STATUS.IDLE, 'Session started')];
-    case 'SessionEnd':
-      return [status(STATUS.IDLE, '')];
+    case 'SessionEnd': {
+      const out = [status(STATUS.IDLE, '')];
+      if (join('peek')) out.push(endEvent('abandoned'));
+      return out;
+    }
     case 'UserPromptSubmit': {
+      join('start');
       const prompt = ctx.sharePrompts && typeof payload.prompt === 'string' ? clip(payload.prompt.replace(/\s+/g, ' ').trim(), 90) : '';
-      const out = [status(STATUS.THINKING, prompt ? `Task: ${prompt}` : 'Received a task')];
+      const out = [];
+      if (task?.previous) out.push({ type: 'task', action: 'end', id: task.previous, outcome: 'abandoned', ts });
+      if (task) out.push(startEvent(prompt));
+      out.push(status(STATUS.THINKING, prompt ? `Task: ${prompt}` : 'Received a task'));
       // A new task opens with a short kick-off meeting: the agent that got it
       // gathers its direct reports at the meeting table to split the work.
       const team = typeof ctx.team === 'function' ? ctx.team(agent).slice(0, 8) : [];
       const ms = Number.isFinite(ctx.meetingMs) ? ctx.meetingMs : 20000;
-      if (team.length && ms > 0) out.push({ type: 'meeting', host: agent, agents: team, topic: prompt, durationMs: ms, ts });
+      if (team.length && ms > 0) out.push({ type: 'meeting', host: agent, agents: team, topic: prompt, taskId: taskId(), durationMs: ms, ts });
       return out;
     }
     case 'PreToolUse': {
+      join('work');
       const tool = typeof payload.tool_name === 'string' ? payload.tool_name : 'tool';
       const input = payload.tool_input;
       const out = [status(statusForTool(tool), describeTool(tool, input), tool)];
@@ -118,31 +143,42 @@ export function fromClaudeHook(payload, ctx) {
             from: agent,
             to: target,
             task: ctx.sharePrompts && typeof input.description === 'string' ? clip(input.description, 100) : '',
+            taskId: taskId(),
             ts,
           });
         }
       }
-      return out;
+      return withStart(out);
     }
     case 'PostToolUse':
-      return [status(STATUS.THINKING, 'Thinking')];
+      join('work');
+      return withStart([status(STATUS.THINKING, 'Thinking')]);
     case 'PostToolUseFailure':
-      return [status(STATUS.ERROR, `${payload.tool_name || 'Tool'} failed`, typeof payload.tool_name === 'string' ? payload.tool_name : null)];
+      join('work');
+      return withStart([status(STATUS.ERROR, `${payload.tool_name || 'Tool'} failed`, typeof payload.tool_name === 'string' ? payload.tool_name : null)]);
     case 'PermissionRequest':
-      return [status(STATUS.PERMISSION, `Needs approval: ${payload.tool_name || 'a tool'}`, typeof payload.tool_name === 'string' ? payload.tool_name : null)];
+      join('work');
+      return withStart([status(STATUS.PERMISSION, `Needs approval: ${payload.tool_name || 'a tool'}`, typeof payload.tool_name === 'string' ? payload.tool_name : null)]);
     case 'Notification': {
+      join('peek');
       const msg = typeof payload.message === 'string' ? payload.message : '';
       if (/permission|approve|allow/i.test(msg)) return [status(STATUS.PERMISSION, 'Needs your approval')];
       return [status(STATUS.WAITING, 'Waiting for your input')];
     }
-    case 'Stop':
-      return [status(STATUS.DONE, 'Finished')];
+    case 'Stop': {
+      join('peek');
+      const out = [status(STATUS.DONE, 'Finished')];
+      if (task) out.push(endEvent('done'));
+      return out;
+    }
     case 'SubagentStart': {
+      join('peek');
       const who = typeof payload.agent_type === 'string' ? slug(payload.agent_type) : null;
       if (!who || !isValidAgentId(who)) return [];
       return [status(STATUS.THINKING, 'Started a task', null, who)];
     }
     case 'SubagentStop': {
+      join('peek');
       const who = typeof payload.agent_type === 'string' ? slug(payload.agent_type) : null;
       if (!who || !isValidAgentId(who)) return [status(STATUS.THINKING, 'Reviewing the result')];
       return [status(STATUS.DONE, 'Finished', null, who), status(STATUS.THINKING, 'Reviewing the result', null, agent === who ? ctx.main : agent)];
