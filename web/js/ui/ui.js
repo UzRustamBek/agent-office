@@ -127,6 +127,11 @@ export class UI {
     $('btn-zoom-in').addEventListener('click', () => this.app.renderer.zoomBy(1.3));
     $('btn-zoom-out').addEventListener('click', () => this.app.renderer.zoomBy(1 / 1.3));
     $('btn-fit').addEventListener('click', () => this.app.renderer.fit());
+    $('btn-cine').addEventListener('click', () => this.app.renderer.setCinema(!this.app.renderer.cinema));
+    $('btn-palette').addEventListener('click', () => this.app.palette?.open());
+    $('now').addEventListener('click', () => {
+      if (this.nowId) this.app.actions.selectAgent(this.nowId, { focus: true });
+    });
     $('btn-full').addEventListener('click', () => {
       if (document.fullscreenElement) document.exitFullscreen();
       else document.documentElement.requestFullscreen?.().catch(() => {});
@@ -195,6 +200,7 @@ export class UI {
     const dark = s.theme === 'auto' ? !window.matchMedia('(prefers-color-scheme: light)').matches : s.theme === 'dark';
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     document.documentElement.dataset.motion = s.reduceMotion ? 'reduced' : 'full';
+    document.documentElement.dataset.look = s.look || 'classic';
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = dark ? '#0d1020' : '#eceff8';
   }
@@ -219,6 +225,43 @@ export class UI {
     el.dataset.mode = mode;
     this.$('conn-text').textContent = this.t(`conn.${mode}`);
     el.title = this.t(`conn.${mode}.title`) === `conn.${mode}.title` ? '' : this.t(`conn.${mode}.title`);
+  }
+
+  /** Cinema button state (the camera can also stop by itself when you move it). */
+  setCinemaUi(on) {
+    const b = this.$('btn-cine');
+    b.setAttribute('aria-pressed', String(on));
+    b.classList.toggle('is-on', on);
+    document.body.dataset.cinema = String(on);
+    this.renderNow();
+  }
+
+  /** The "Now" pill: what the director is filming, or else the agent that acted last. */
+  renderNow() {
+    const el = this.$('now');
+    const r = this.app.renderer;
+    const shot = r.director.on ? r.director.shot : null;
+    let id = shot?.kind === 'agent' ? shot.id : null;
+    if (!id) {
+      let best = null;
+      for (const a of this.state?.roster.agents || []) {
+        const st = this.state.agents[a.id];
+        if (st && ACTIVE.has(st.status) && (!best || st.lastEventAt > best.lastEventAt)) best = st;
+      }
+      id = best?.id || null;
+    }
+    const st = id ? this.state.agents[id] : null;
+    // while the meeting is filmed its banner sits where the pill would be
+    if (shot?.kind === 'meeting' || !st || !ACTIVE.has(st.status)) {
+      el.hidden = true;
+      this.nowId = null;
+      return;
+    }
+    this.nowId = id;
+    el.hidden = false;
+    el.style.setProperty('--st', STATUS_COLOR[st.status] || STATUS_COLOR.idle);
+    this.$('now-name').textContent = this.state.roster.agents.find((a) => a.id === id)?.name || id;
+    this.$('now-text').textContent = st.activity || this.statusLabel(st.status);
   }
 
   renderStats(sum) {
@@ -408,7 +451,7 @@ export class UI {
     const tagList = (items, soft) => h('div', { class: 'tags' }, items.map((x) => h('span', { class: `tag${soft ? ' soft' : ''}`, text: x })));
 
     const d = this.$('drawer');
-    d.replaceChildren(
+    const kids = [
       h('button', { class: 'icon-btn close', type: 'button', 'aria-label': this.t('drawer.close'), onclick: () => this.app.actions.selectAgent(null) }, h('span', { 'aria-hidden': 'true', text: '✕' })),
       h(
         'div',
@@ -425,7 +468,8 @@ export class UI {
       section(this.t('drawer.stats'), stats),
       section(this.t('drawer.recent'), timeline),
       actions,
-    );
+    ].filter(Boolean); // replaceChildren(null) would insert the text "null"
+    d.replaceChildren(...kids);
     d.hidden = false;
     this.drawerRefs = { id, badge, nowText, now, stats, timeline, followBtn };
     this.updateDrawer();
@@ -538,6 +582,7 @@ export class UI {
     const fields = [
       field(t('settings.language'), select('lang', LANGS.map((l) => [l.code, l.label]))),
       field(t('settings.theme'), select('theme', [['auto', t('settings.theme.auto')], ['dark', t('settings.theme.dark')], ['light', t('settings.theme.light')]])),
+      field(t('settings.look'), select('look', [['classic', t('settings.look.classic')], ['neon', t('settings.look.neon')], ['cozy', t('settings.look.cozy')]]), t('settings.look.hint')),
       field(t('settings.names'), select('names', [['always', t('settings.names.always')], ['hover', t('settings.names.hover')], ['off', t('settings.names.off')]])),
       field(t('settings.lighting'), select('lighting', [['auto', t('settings.lighting.auto')], ['day', t('settings.lighting.day')], ['night', t('settings.lighting.night')]])),
       field(t('settings.breaks'), select('breaks', [['off', t('settings.breaks.off')], ['rare', t('settings.breaks.rare')], ['normal', t('settings.breaks.normal')]]), t('settings.breaks.hint')),

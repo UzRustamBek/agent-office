@@ -10,6 +10,7 @@ import { World } from './office/world.js';
 import { createSimulator } from './sim/demo.js';
 import { loadSettings, loadStoredRoster, saveSettings, storeRoster, clearStoredRoster } from './ui/settings.js';
 import { sounds } from './ui/sound.js';
+import { Palette } from './ui/palette.js';
 import { UI } from './ui/ui.js';
 
 const params = new URLSearchParams(location.search);
@@ -39,6 +40,7 @@ const ALLOWED = {
   names: ['always', 'hover', 'off'],
   lighting: ['auto', 'day', 'night'],
   breaks: ['off', 'rare', 'normal'],
+  look: ['classic', 'neon', 'cozy'],
 };
 for (const [key, values] of Object.entries(ALLOWED)) {
   if (params.has(key) && values.includes(params.get(key))) {
@@ -65,8 +67,11 @@ app.renderer = new OfficeRenderer(canvas, {
   t: (key, vars) => (app.ui ? app.ui.t(key, vars) : key),
   onPick: (id) => app.actions.selectAgent(id),
   onHover: (id, e) => app.ui?.showTooltip(id, e || { clientX: 0, clientY: 0 }),
+  onCinema: (on) => app.ui?.setCinemaUi(on),
+  onShot: () => app.ui?.renderNow(),
 });
 app.ui = new UI(app);
+app.palette = new Palette(app);
 
 // --- actions -----------------------------------------------------------------
 app.actions = {
@@ -80,6 +85,14 @@ app.actions = {
     if (app.renderer.followId === id) app.renderer.followId = null;
     else app.renderer.follow(id);
     app.ui.updateDrawer();
+  },
+  nextLook() {
+    const looks = ALLOWED.look;
+    app.updateSettings({ look: looks[(looks.indexOf(app.settings.look) + 1) % looks.length] });
+  },
+  nextLang() {
+    const langs = ALLOWED.lang;
+    app.updateSettings({ lang: langs[(langs.indexOf(app.settings.lang) + 1) % langs.length] });
   },
   giveTask(id) {
     app.sim?.assign(id, Date.now());
@@ -122,7 +135,7 @@ app.updateSettings = (patch) => {
     app.ui.applyI18n();
     if (document.getElementById('settings').open) app.ui.buildSettings();
   }
-  if ('theme' in patch || 'reduceMotion' in patch) {
+  if ('theme' in patch || 'reduceMotion' in patch || 'look' in patch) {
     app.ui.applyTheme();
     if (app.world) app.world.reduceMotion = app.settings.reduceMotion;
   }
@@ -215,6 +228,7 @@ function ingest(raw) {
     }
   }
   app.ui.renderStats(summarize(app.state));
+  app.ui.renderNow();
   app.ui.updateDrawer();
   if (app.ui.filter !== 'all') app.ui.applyFilter();
   if (app.settings.sound && evt.type === 'status' && before !== evt.status && NOTIFY.has(evt.status)) {
@@ -289,6 +303,7 @@ setInterval(() => {
   if (!app.state) return;
   for (const id of tick(app.state, Date.now())) app.ui.refreshRow(id);
   app.ui.renderStats(summarize(app.state));
+  app.ui.renderNow();
   app.ui.updateDrawer();
   if (app.ui.filter !== 'all') app.ui.applyFilter();
 }, 1000);
@@ -304,7 +319,11 @@ window.addEventListener('keydown', (e) => {
   const r = app.renderer;
   switch (e.key) {
     case 'f':
+      r.setCinema(false);
       r.fit();
+      break;
+    case 'c':
+      r.setCinema(!r.cinema);
       break;
     case '+':
     case '=':
@@ -334,7 +353,7 @@ window.addEventListener('keydown', (e) => {
 new ResizeObserver(() => {
   const r = app.renderer;
   r.resize();
-  if (r.layout && !r.userMoved && !r.followId) r.fit();
+  if (r.layout && !r.userMoved && !r.followId && !r.cinema) r.fit();
 }).observe(stage);
 window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change', () => app.ui.applyTheme());
 

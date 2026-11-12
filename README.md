@@ -123,6 +123,7 @@ or `POST /api/events` with the bearer token printed in `~/.agent-office/servers/
 | **Office** | Departments become carpeted zones with a desk per agent, plus a lounge, pantry and meeting room. The layout is generated from your roster (1 to 120 agents). |
 | **Hierarchy** | An org chart you can walk through: chief on top, then department heads, then the people who do the work, joined by reporting lines. Gold and steel nameplates mark chiefs and managers. See [Hierarchy](docs/AGENTS-FORMAT.md#hierarchy). |
 | **Characters** | Drawn in code (no image files). Six skin tones, eight hairstyles, accessories, team-colored shirts, walk cycles in four directions, and a pose for every state. |
+| **Director's cut** | One key (`C`) turns the camera into a director: it films the kick-off meeting, rotates between busy agents and zooms out when it is quiet. `Ctrl+K` jumps to any agent; three looks (Classic, Neon night, Cozy sunset) change the mood. |
 | **Meetings** | A new task starts with a kick-off meeting: the host at the whiteboard, the team around the table, sticky notes filling the agenda, task cards dealt out, a speaker bubble going round and a countdown banner. Then the tasks fly out as envelopes. |
 | **Life** | Working agents stay at their desks. Idle ones may stroll to the coffee machine or sofa (rarely by default; the *Breaks* setting makes it never or often) and walk back when work arrives. |
 | **Screens** | Each monitor shows what its agent is doing: scrolling code, a terminal, a document, search results, a delegation graph, a "?" or "!" alert. |
@@ -144,6 +145,9 @@ Settings (gear icon): theme, language, name tags, lighting, **breaks**, reduced 
     <td width="50%"><img src="docs/assets/light-uz.jpg" alt="Light theme with the Uzbek interface"><br/><sub><b>Light theme, Oʻzbekcha UI</b>: the same office, English / Uzbek / Russian.</sub></td>
   </tr>
   <tr>
+    <td colspan="2"><img src="docs/assets/director.jpg" alt="Director's cut in the Neon night look: the camera films the kick-off meeting with letterbox bars" width="100%"><br/><sub><b>Director's cut</b> in the Neon night look: the camera follows the action by itself.</sub></td>
+  </tr>
+  <tr>
     <td colspan="2"><img src="docs/assets/meeting.jpg" alt="A kick-off meeting: the host at the whiteboard, the team at the meeting table" width="100%"><br/><sub><b>Kick-off meeting</b>: a new task first gathers the team at the table; the agenda fills up, task cards are dealt, then everyone goes back to work.</sub></td>
   </tr>
 </table>
@@ -161,6 +165,7 @@ See [SECURITY.md](SECURITY.md).
 ## CLI
 
 ```text
+agent-office autostart install|uninstall|status [--port n] [--agents file] [--write]
 agent-office start     [--agents file] [--port n] [--host addr] [--allow-host names] [--demo] [--demo-speed n] [--meeting seconds] [--share-prompts] [--open]
 agent-office import    [dir...] [--out file] [--main name] [--title text] [--dry-run]
 agent-office hooks     print | install | uninstall | status  [--scope user|project|local] [--all] [--agent id] [--write]

@@ -17,6 +17,7 @@ import {
   settingsPath,
   writeSettings,
 } from './hooks.js';
+import { autostartStatus, installAutostart, removeAutostart } from './autostart.js';
 import { liveServers } from './registry.js';
 import { VERSION, createOfficeServer, loadRosterFile, resolveRosterFile } from './server.js';
 
@@ -34,6 +35,7 @@ ${c.bold('Commands')}
   start                 Serve the office and the live event stream
   import [dir...]       Build a roster from Claude Code agent files (.claude/agents)
   hooks <action>        print | install | uninstall | status  (Claude Code hooks)
+  autostart <action>    install | uninstall | status  (start the office when you log in)
   emit                  Send one event to a running server (any tool can use this)
   doctor                Check roster, server and hooks
   help | --version
@@ -48,6 +50,7 @@ ${c.bold('start')}
   --allow-host <names>  Extra Host names to accept, comma separated (e.g. a reverse proxy name)
   --share-prompts       Show task text from prompts in the activity label (off by default)
   --open                Open the browser
+  --once                Do nothing if an office is already running (used by autostart)
 
 ${c.bold('import')}
   [dir...]              Folders to scan (default: ~/.claude/agents and ./.claude/agents)
@@ -60,6 +63,11 @@ ${c.bold('hooks')}
   print   [--all] [--agent <id>]
   install [--scope user|project|local] [--all] [--agent <id>] [--write]
   uninstall [--scope ...] [--write]        (install/uninstall only change files with --write)
+  status
+
+${c.bold('autostart')}
+  install [--port <n>] [--agents <file>] [--write]   (dry run unless --write)
+  uninstall [--write]
   status
 
 ${c.bold('emit')}
@@ -106,7 +114,8 @@ function openBrowser(url) {
 
 // --- start -------------------------------------------------------------------
 async function cmdStart(argv) {
-  const { flags } = parseArgs(argv, ['demo', 'open', 'share-prompts']);
+  const { flags } = parseArgs(argv, ['demo', 'open', 'share-prompts', 'once']);
+  if (flags.once && liveServers().length) return; // already running: stay quiet, never start a twin
   const port = flags.port === undefined ? 4317 : Number(flags.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535) return fail('--port must be a number between 0 and 65535');
   const host = typeof flags.host === 'string' ? flags.host : '127.0.0.1';
@@ -275,6 +284,41 @@ function postJson(entry, route, body) {
   });
 }
 
+function cmdAutostart(argv) {
+  const { flags, positional } = parseArgs(argv, ['write']);
+  const action = positional[0] || 'status';
+  const opts = {};
+  if (flags.port !== undefined) {
+    const port = Number(flags.port);
+    if (!Number.isInteger(port) || port < 0 || port > 65535) return fail('--port must be a number between 0 and 65535');
+    opts.port = port;
+  }
+  if (typeof flags.agents === 'string') opts.agents = path.resolve(flags.agents);
+  try {
+    if (action === 'status') {
+      const st = autostartStatus(opts);
+      console.log(`  ${st.installed ? c.green('installed    ') : st.foreign ? c.yellow('not ours     ') : 'not installed'}  ${st.file}`);
+    } else if (action === 'install') {
+      if (!flags.write) {
+        console.log(`dry run: would create ${autostartStatus(opts).file}
+  Run again with --write to apply.`);
+        return;
+      }
+      console.log(`${c.green('✓')} will start at login: ${installAutostart(opts)}
+  It runs in the folder you are in now (${process.cwd()}), so agents.local.json is found there.`);
+    } else if (action === 'uninstall') {
+      if (!flags.write) {
+        console.log(`dry run: would remove ${autostartStatus(opts).file}
+  Run again with --write to apply.`);
+        return;
+      }
+      console.log(removeAutostart(opts) ? `${c.green('✓')} removed` : 'nothing to remove');
+    } else fail(`unknown autostart action "${action}" (install | uninstall | status)`);
+  } catch (err) {
+    fail(err.message);
+  }
+}
+
 async function cmdEmit(argv) {
   const { flags } = parseArgs(argv);
   const servers = liveServers();
@@ -365,6 +409,8 @@ export async function main(argv) {
       return cmdImport(rest);
     case 'hooks':
       return cmdHooks(rest);
+    case 'autostart':
+      return cmdAutostart(rest);
     case 'emit':
       return cmdEmit(rest);
     case 'doctor':

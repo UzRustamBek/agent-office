@@ -12,6 +12,7 @@ export function defaultSettings() {
     theme: 'auto', // auto | dark | light
     names: 'always', // always | hover | off
     lighting: 'auto', // auto | day | night
+    look: 'classic', // classic | neon | cozy: colour mood of office and interface
     reduceMotion: false,
     breaks: 'rare', // off | rare | normal: how often idle agents leave their desks
     bubbles: true,

@@ -153,7 +153,10 @@ export class World {
     if (evt.type === 'status') {
       const ch = this.chars.get(evt.agent);
       if (!ch) return;
-      if (evt.status === STATUS.DONE) this.effects.push({ kind: 'sparkle', at: now, x: ch.x, y: ch.y - 30, color: '#7ff0b4', life: 900 });
+      if (evt.status === STATUS.DONE) {
+        this.effects.push({ kind: 'sparkle', at: now, x: ch.x, y: ch.y - 30, color: '#7ff0b4', life: 900 });
+        if (!this.reduceMotion) this.effects.push({ kind: 'confetti', at: now, x: ch.x, y: ch.y - 26, life: 1500 });
+      }
       if (evt.status === STATUS.ERROR) ch.shakeUntil = now + 700;
     } else if (evt.type === 'delegate') {
       const a = this.chars.get(evt.from);

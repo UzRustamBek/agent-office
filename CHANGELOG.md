@@ -2,6 +2,19 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.3.0]
+
+### Added
+- **Director's cut** (button or `C`): an automatic camera that films the kick-off meeting, rotates between busy agents and pulls back to the whole office when everything is quiet. Letterbox bars, a vignette and a blinking REC light while it films; grabbing the camera hands control back.
+- **Now pill**: what is happening right now; click it to jump to that agent.
+- **Command palette** (`Ctrl+K` / `Cmd+K`): jump to any agent or run a command from the keyboard.
+- **Looks**: Classic, Neon night and Cozy sunset recolour the office and the interface (setting or `?look=`).
+- Confetti when an agent finishes.
+- `agent-office autostart install|uninstall|status`: start the office when you log in (Windows Startup folder, macOS LaunchAgent, Linux autostart; dry run unless `--write`). `start --once` does nothing when an office is already running.
+
+### Fixed
+- The agent drawer printed the text "null" for agents without tools or skills.
+
 ## [1.2.0]
 
 ### Added

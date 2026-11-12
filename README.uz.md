@@ -109,6 +109,14 @@ node bin/agent-office.js emit --delegate director:writer --task "Axborotnoma"
 
 Protokol: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#event-protocol).
 
+### Kompyuter yoqilganda o‘zi ishga tushsin
+
+```bash
+node bin/agent-office.js autostart install --write
+```
+
+Faqat bitta kichik fayl yoziladi (Windows: Startup papkasida yashirin skript). `autostart uninstall --write` uni olib tashlaydi. Batafsil: [docs/HOOKS.md](docs/HOOKS.md).
+
 ## Nimalar bor
 
 | | |

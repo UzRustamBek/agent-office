@@ -35,6 +35,9 @@
 
       <div class="topbar-actions">
         <span class="conn" id="conn" data-mode="connecting" title=""><i></i><span id="conn-text">…</span></span>
+        <button class="icon-btn" id="btn-palette" aria-label="Search and commands" data-i18n-aria="actions.palette" data-i18n-title="actions.palette" title="Search and commands (Ctrl K)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" /></svg>
+        </button>
         <button class="icon-btn" id="btn-load" data-i18n-title="actions.load" title="Load roster (JSON)">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" /></svg>
         </button>
@@ -68,6 +71,7 @@
         <div class="zoom glass" id="zoom">
           <button class="icon-btn" id="btn-zoom-in" aria-label="Zoom in" data-i18n-aria="aria.zoomIn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button>
           <button class="icon-btn" id="btn-zoom-out" aria-label="Zoom out" data-i18n-aria="aria.zoomOut"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg></button>
+          <button class="icon-btn" id="btn-cine" aria-pressed="false" aria-label="Director's cut" data-i18n-aria="cine.btn" data-i18n-title="cine.btn" title="Director's cut: the camera follows the action (C)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h12a2 2 0 012 2v6a2 2 0 01-2 2H3zM17 11l4-2.5v7L17 13" /></svg></button>
           <button class="icon-btn" id="btn-fit" aria-label="Fit" data-i18n-aria="aria.fit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4" /></svg></button>
           <button class="icon-btn" id="btn-full" aria-label="Fullscreen" data-i18n-aria="aria.full"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" /></svg></button>
         </div>
@@ -81,6 +85,8 @@
           <button class="log-head" id="log-toggle" aria-expanded="true"><span data-i18n="log.title">Activity</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg></button>
           <ol id="log-list" aria-live="off"></ol>
         </div>
+
+        <button class="now glass" id="now" type="button" hidden><i></i><span class="now-tag" data-i18n="now.label">Now</span><b id="now-name"></b><span id="now-text"></span></button>
 
         <aside class="drawer glass" id="drawer" aria-label="Agent details" data-i18n-aria="aria.details" hidden></aside>
 
@@ -102,6 +108,14 @@
         </footer>
       </form>
     </dialog>
+
+    <div class="palette" id="palette" role="dialog" aria-modal="true" aria-label="Search and commands" data-i18n-aria="actions.palette" hidden>
+      <div class="palette-box glass">
+        <input type="text" autocomplete="off" spellcheck="false" aria-label="Search" role="combobox" aria-expanded="true" aria-controls="palette-list" />
+        <ul id="palette-list" role="listbox"></ul>
+        <div class="palette-hint"></div>
+      </div>
+    </div>
 
     <div class="toasts" id="toasts" aria-live="polite"></div>
     <input type="file" id="file" accept="application/json,.json" hidden />

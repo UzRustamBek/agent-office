@@ -24,6 +24,18 @@ Add `--all` to also register `SubagentStart`, `PostToolUseFailure` and `Permissi
 
 If you prefer to edit by hand, `agent-office hooks print` produces ready-to-paste JSON. Your own hooks are never touched: ours are recognised by the script name `agent-office-hook.js`.
 
+## Keep the office running
+
+The office only moves while a server is running. To have it start when you log in:
+
+```bash
+agent-office autostart install --write     # dry run without --write
+agent-office autostart status
+agent-office autostart uninstall --write
+```
+
+It writes one small file (Windows: a hidden script in the Startup folder; macOS: a LaunchAgent; Linux: an autostart entry) that runs `agent-office start --once` in the folder you installed from, so your `agents.local.json` is found. `--once` exits quietly when an office is already running, so you never get two. `uninstall` removes only that file, and refuses to touch a file it did not create.
+
 ## What each event does
 
 | Hook event | Result in the office |

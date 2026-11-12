@@ -5,7 +5,8 @@
 import { ACTIVE, STATUS } from '../core/model.js';
 import { TILE } from '../core/layout.js';
 import { drawCharacter } from './character.js';
-import { drawClock, drawEnvelope, drawSparkle, drawStatic, drawZ, furnitureLayers } from './draw.js';
+import { Director } from './director.js';
+import { drawClock, drawConfetti, drawEnvelope, drawSparkle, drawStatic, drawZ, furnitureLayers } from './draw.js';
 import { STATUS_COLOR } from './palette.js';
 
 const FONT = '600 12px ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif';
@@ -40,7 +41,26 @@ export class OfficeRenderer {
     this.dpr = 1;
     /** Pixels at the bottom kept free for overlay panels (activity log). */
     this.reserveBottom = 0;
+    this.director = new Director(this, {
+      statusOf: (id) => this.hooks.getAgent(id)?.status || STATUS.IDLE,
+      sinceOf: (id) => this.hooks.getAgent(id)?.since || 0,
+    });
+    this._lastFrame = 0;
     this._attach();
+  }
+
+  get cinema() {
+    return this.director.on;
+  }
+
+  /** Director's cut: the camera films the busiest agent, the meeting, or the whole office. */
+  setCinema(on) {
+    if (on === this.director.on) return;
+    if (on) {
+      this.director.start();
+      this.userMoved = false;
+    } else this.director.stop();
+    this.hooks.onCinema?.(on);
   }
 
   setWorld(world, layout, roster, { keepView = false } = {}) {
@@ -77,6 +97,7 @@ export class OfficeRenderer {
 
   fit() {
     if (!this.layout) return;
+    this.setCinema(false);
     this.resize();
     const z = this.fitZoom();
     this.minZoom = Math.max(0.2, z * 0.6);
@@ -109,6 +130,7 @@ export class OfficeRenderer {
   follow(id) {
     this.followId = id;
     if (id) {
+      this.setCinema(false);
       const ch = this.world?.get(id);
       if (ch) {
         this.zoom = clamp(Math.max(this.zoom, this.fitZoom() * 2.2, 2.6), this.minZoom, this.maxZoom);
@@ -265,9 +287,16 @@ export class OfficeRenderer {
     const { ctx, layout, world } = this;
     const settings = this.hooks.getSettings();
     const date = new Date();
-    const night = this._isNight(settings, date);
+    const look = settings.look || 'classic';
+    const night = look === 'neon' || this._isNight(settings, date);
     const t = now / 1000;
+    const dt = this._lastFrame ? Math.min(0.1, (now - this._lastFrame) / 1000) : 0.016;
+    this._lastFrame = now;
 
+    if (this.director.on) {
+      if (this.userMoved) this.setCinema(false); // the user grabbed the camera
+      else this.director.step(now, dt);
+    }
     if (this.followId) {
       const ch = world.get(this.followId);
       if (ch) {
@@ -356,18 +385,30 @@ export class OfficeRenderer {
     // night: darken, then let screens glow
     if (night) {
       ctx.globalCompositeOperation = 'multiply';
-      ctx.fillStyle = '#6a74b2';
+      ctx.fillStyle = look === 'neon' ? '#4b4aa6' : look === 'cozy' ? '#a8805f' : '#6a74b2';
       ctx.fillRect(0, 0, layout.pxW, layout.pxH);
       ctx.globalCompositeOperation = 'lighter';
+      const boost = look === 'neon' ? 1.9 : 1;
       for (const g of env.glows) {
         const col = g.status === 'tv' ? '#4a63d6' : STATUS_COLOR[g.status] || '#4a5890';
-        ctx.globalAlpha = g.status === 'idle' || g.status === 'sleeping' ? 0.1 : 0.32;
+        const idle = g.status === 'idle' || g.status === 'sleeping';
+        ctx.globalAlpha = Math.min(0.7, (idle ? 0.1 : 0.32) * boost);
         ctx.fillStyle = col;
         ctx.fillRect(g.x, g.y, g.w, g.h);
-        ctx.globalAlpha = 0.07;
+        ctx.globalAlpha = Math.min(0.2, 0.07 * boost * (idle ? 1 : 1.6));
         ctx.fillRect(g.x - 6, g.y - 4, g.w + 12, g.h + 12);
+        if (look === 'neon' && !idle) {
+          ctx.globalAlpha = 0.1;
+          ctx.fillRect(g.x - 14, g.y - 10, g.w + 28, g.h + 28);
+        }
       }
       ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    } else if (look === 'cozy') {
+      // warm late-afternoon light
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = '#ffd3a2';
+      ctx.fillRect(0, 0, layout.pxW, layout.pxH);
       ctx.globalCompositeOperation = 'source-over';
     }
 
@@ -382,7 +423,50 @@ export class OfficeRenderer {
       ctx.globalCompositeOperation = 'source-over';
     }
 
+    // confetti is drawn after the night tint so it stays bright
+    for (const e of world.effects) if (e.kind === 'confetti') drawConfetti(ctx, e.x, e.y, (now - e.at) / e.life, e.life / 1000);
+
     this._drawOverlay(now, settings);
+    this._drawFilm(now, settings, look);
+  }
+
+  /** Screen-space finish: vignette for the looks and letterbox bars while the director films. */
+  _drawFilm(now, settings, look) {
+    const { ctx } = this;
+    const dpr = this.dpr;
+    const w = this.cssW;
+    const h = this.cssH;
+    const cine = this.director.on;
+    const strength = cine ? 0.5 : look === 'neon' ? 0.42 : look === 'cozy' ? 0.3 : 0;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (strength > 0) {
+      const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.hypot(w, h) * 0.62);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, look === 'cozy' ? `rgba(60,24,0,${strength})` : `rgba(4,4,24,${strength})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    }
+    if (cine) {
+      const bar = Math.round(h * 0.055);
+      ctx.fillStyle = 'rgba(2,3,14,0.92)';
+      ctx.fillRect(0, 0, w, bar);
+      ctx.fillRect(0, h - bar, w, bar);
+      const blink = settings.reduceMotion || Math.floor(now / 700) % 2 === 0;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      ctx.font = '700 11px ui-monospace, Menlo, Consolas, monospace';
+      if (blink) {
+        ctx.fillStyle = '#ff4d6d';
+        ctx.beginPath();
+        ctx.arc(16, bar / 2, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      const shot = this.director.shot;
+      const name = shot?.kind === 'agent' ? this.roster.agents.find((a) => a.id === shot.id)?.name : null;
+      const label = shot?.kind === 'meeting' ? this.hooks.t?.('cine.meeting') : name ? name : this.hooks.t?.('cine.overview');
+      ctx.fillText(`${this.hooks.t?.('cine.title') || 'DIRECTOR'} · ${String(label || '').toUpperCase()}`, 28, bar / 2 + 1);
+    }
   }
 
   /** Warm spotlight and a moving dashed border on the meeting room floor. */

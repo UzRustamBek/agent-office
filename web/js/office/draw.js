@@ -716,6 +716,23 @@ function drawChairFront(c, px, py) {
 // Effects
 // ---------------------------------------------------------------------------
 
+const CONFETTI = ['#ff6b8b', '#ffd166', '#7ff0b4', '#6cc4ff', '#c79bff', '#ffa86b'];
+
+/** A burst of pixel confetti: 18 pieces on little arcs. `secs` = effect length. */
+export function drawConfetti(ctx, x, y, age, secs) {
+  const t = age * secs;
+  for (let i = 0; i < 18; i++) {
+    const angle = -Math.PI / 2 + (((i * 2.399963) % (Math.PI * 2)) - Math.PI) * 0.62; // fan upwards
+    const speed = 22 + ((i * 37) % 19);
+    const px = x + Math.cos(angle) * speed * t + Math.sin(t * 6 + i) * 1.2;
+    const py = y + Math.sin(angle) * speed * t + 34 * t * t;
+    ctx.globalAlpha = Math.max(0, Math.min(1, (1 - age) * 2));
+    const size = i % 3 === 0 ? 3 : 2;
+    rect(ctx, Math.round(px), Math.round(py), size, size + (i % 2), CONFETTI[i % CONFETTI.length]);
+  }
+  ctx.globalAlpha = 1;
+}
+
 export function drawSparkle(ctx, x, y, age, color) {
   const p = age;
   const a = Math.max(0, 1 - p);
