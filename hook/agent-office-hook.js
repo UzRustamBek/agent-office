@@ -3,7 +3,8 @@
 //
 // Reads the hook JSON from stdin and forwards it to every running Agent Office
 // server on this machine. It is deliberately tiny, dependency-free and silent:
-// it never prints, never blocks Claude Code for more than ~1.5 s and always
+// it never prints, never blocks Claude Code for more than ~2.5 s (1 s to read
+// stdin, 1.5 s per request, servers are contacted in parallel) and always
 // exits with code 0, even when no server is running.
 //
 // Optional environment variables:
@@ -11,6 +12,8 @@
 //   AGENT_OFFICE_URL    explicit server URL (needs AGENT_OFFICE_TOKEN)
 //   AGENT_OFFICE_TOKEN  bearer token printed by `agent-office start`
 //   AGENT_OFFICE_HOME   registry folder (default ~/.agent-office)
+//   AGENT_OFFICE_SHARE_PROMPTS=1  also forward the first 200 characters of your
+//                       prompts (the server shows them only with --share-prompts)
 
 import fs from 'node:fs';
 import http from 'node:http';
@@ -32,14 +35,18 @@ function targets() {
   }
   const out = [];
   for (const f of files) {
+    let e;
     try {
-      const e = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
-      process.kill(e.pid, 0); // throws when the server is gone
-      if (typeof e.url === 'string' && typeof e.token === 'string') out.push(e);
+      e = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    } catch {
+      continue;
+    }
+    if (typeof e?.url !== 'string' || typeof e?.token !== 'string') continue;
+    try {
+      process.kill(e.pid, 0); // throws ESRCH when the server is gone
+      out.push(e);
     } catch (err) {
-      if (err && err.code === 'EPERM') {
-        /* process exists but belongs to another user: still try it */
-      }
+      if (err?.code === 'EPERM') out.push(e); // alive, but owned by another user
     }
   }
   return out;
@@ -103,19 +110,27 @@ function readStdin() {
   });
 }
 
-// Only forward the few small fields the server needs. File contents, tool
-// responses and transcript paths never leave Claude Code.
+// Only forward the few small fields the server needs, already reduced to what
+// it shows: a file *name* (never its folder), the program of a shell command
+// (never its arguments, which can hold secrets), short descriptions and ids.
+// File contents, tool responses, transcript paths and URLs never leave Claude
+// Code. The prompt text is sent only when AGENT_OFFICE_SHARE_PROMPTS=1.
 const KEEP_TOP = ['hook_event_name', 'session_id', 'agent_type', 'agent_id', 'tool_name', 'message'];
-const KEEP_INPUT = ['file_path', 'notebook_path', 'path', 'pattern', 'command', 'description', 'query', 'url', 'subagent_type'];
+const SHORT_INPUT = { pattern: 60, description: 120, query: 80, subagent_type: 64 };
+
+const baseName = (p) => String(p).split(/[\\/]/).filter(Boolean).pop() || '';
 
 function slim(payload) {
   const out = {};
-  for (const k of KEEP_TOP) if (typeof payload[k] === 'string') out[k] = payload[k].slice(0, 300);
-  if (typeof payload.prompt === 'string') out.prompt = payload.prompt.slice(0, 400);
+  for (const k of KEEP_TOP) if (typeof payload[k] === 'string') out[k] = payload[k].slice(0, 200);
+  if (process.env.AGENT_OFFICE_SHARE_PROMPTS === '1' && typeof payload.prompt === 'string') out.prompt = payload.prompt.slice(0, 200);
   const input = payload.tool_input;
   if (input && typeof input === 'object') {
-    out.tool_input = {};
-    for (const k of KEEP_INPUT) if (typeof input[k] === 'string') out.tool_input[k] = input[k].slice(0, 300);
+    const t = {};
+    for (const k of ['file_path', 'notebook_path', 'path']) if (typeof input[k] === 'string') t[k] = baseName(input[k]).slice(0, 80);
+    if (typeof input.command === 'string') t.command = baseName(input.command.trim().split(/\s+/)[0] || '').slice(0, 40);
+    for (const [k, n] of Object.entries(SHORT_INPUT)) if (typeof input[k] === 'string') t[k] = input[k].slice(0, n);
+    out.tool_input = t;
   }
   return out;
 }

@@ -13,7 +13,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { applyEvent, createState, normalizeEvent, snapshot, tick } from '../web/js/core/model.js';
+import { applyEvent, createState, ensureAgent, normalizeEvent, snapshot, tick } from '../web/js/core/model.js';
 import { normalizeRoster } from '../web/js/core/roster.js';
 import { createSimulator } from '../web/js/sim/demo.js';
 import { fromClaudeHook } from './events.js';
@@ -116,6 +116,8 @@ export function createOfficeServer(options = {}) {
     has: (id) => Boolean(state.agents[id]),
     main: state.roster.office.mainAgent,
     sharePrompts: Boolean(options.sharePrompts),
+    meetingMs: Number.isFinite(options.meetingMs) ? options.meetingMs : 20000,
+    team: (id) => state.roster.agents.find((a) => a.id === id)?.team || [],
   });
 
   function send(res, event, data) {
@@ -148,19 +150,40 @@ export function createOfficeServer(options = {}) {
   function reloadRoster(roster) {
     const next = createState(roster);
     for (const [id, agent] of Object.entries(state.agents)) if (next.agents[id]) next.agents[id] = agent;
+    // guests that appeared from events stay in the office
+    for (const g of state.roster.agents.filter((a) => a.guest && !next.agents[a.id])) {
+      ensureAgent(next, g.id);
+      next.agents[g.id] = state.agents[g.id];
+    }
     next.log = state.log;
     next.seq = state.seq;
     next.startedAt = state.startedAt;
+    next.meeting = state.meeting;
     state = next;
+    for (const w of roster.warnings || []) log('roster warning:', w);
+    // the demo's queued steps may name agents that are gone: start it afresh
+    if (sim) {
+      sim.stop();
+      sim = makeSim();
+    }
     broadcast('snapshot', snapshot(state));
   }
 
+  function makeSim() {
+    return createSimulator({ getRoster: () => state.roster, emit: (e) => ingest([e]), seed: options.seed ?? 7, speed: options.demoSpeed ?? 1 });
+  }
+
   // --- HTTP ----------------------------------------------------------------
+  // DNS rebinding protection: a page on evil.example that resolves to this
+  // machine still sends `Host: evil.example`. Loopback names, names passed with
+  // --allow-host and, when the server is exposed on purpose (--host), plain IP
+  // addresses are accepted; any other host name is refused.
   function hostAllowed(req) {
-    if (!loopbackOnly) return true; // explicitly exposed by the user; writes still need the token
     const h = String(req.headers.host || '').toLowerCase();
     const name = h.startsWith('[') ? h.slice(0, h.indexOf(']') + 1) : h.split(':')[0];
-    return allowHosts.has(name);
+    if (allowHosts.has(name)) return true;
+    if (loopbackOnly) return false;
+    return /^\d{1,3}(\.\d{1,3}){3}$/.test(name) || /^\[[0-9a-f:.]+\]$/.test(name);
   }
 
   function json(res, code, body) {
@@ -196,7 +219,12 @@ export function createOfficeServer(options = {}) {
   }
 
   function serveStatic(req, res, pathname) {
-    let rel = decodeURIComponent(pathname);
+    let rel;
+    try {
+      rel = decodeURIComponent(pathname);
+    } catch {
+      return json(res, 400, { error: 'bad path' });
+    }
     if (rel.endsWith('/')) rel += 'index.html';
     const full = path.resolve(webRoot, '.' + path.posix.normalize('/' + rel));
     if (full !== webRoot && !full.startsWith(webRoot + path.sep)) return json(res, 403, { error: 'forbidden' });
@@ -323,8 +351,8 @@ export function createOfficeServer(options = {}) {
     for (const t of timers) t.unref?.();
 
     if (options.demo) {
-      sim = createSimulator({ getRoster: () => state.roster, emit: (e) => ingest([e]), seed: options.seed ?? 7, speed: options.demoSpeed ?? 1 });
-      const t = setInterval(() => sim.tick(Date.now()), 250);
+      sim = makeSim();
+      const t = setInterval(() => sim?.tick(Date.now()), 250);
       t.unref?.();
       timers.push(t);
     }

@@ -166,3 +166,14 @@ test('simulator: assign gives a specific agent a task, and refuses while busy', 
   assert.ok(events.length > 0 && events.every((e) => e.agent === 'b'));
   assert.equal(events.at(-1).status, 'done');
 });
+
+test('hooks: a group shared with the user keeps the user hook on install and uninstall', () => {
+  const ours = { type: 'command', command: 'node "/x/hook/agent-office-hook.js"' };
+  const mine = { type: 'command', command: 'my-linter.sh' };
+  const settings = { hooks: { PreToolUse: [{ matcher: '*', hooks: [mine, ours] }] } };
+  assert.deepEqual(removeHooks(settings), { hooks: { PreToolUse: [{ matcher: '*', hooks: [mine] }] } });
+  const merged = mergeHooks(settings, buildHookConfig());
+  const cmds = merged.hooks.PreToolUse.flatMap((e) => e.hooks.map((h) => h.command));
+  assert.ok(cmds.includes('my-linter.sh'));
+  assert.equal(cmds.filter((c) => c.includes('agent-office-hook.js')).length, 1);
+});

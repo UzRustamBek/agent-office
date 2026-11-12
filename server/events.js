@@ -98,7 +98,13 @@ export function fromClaudeHook(payload, ctx) {
       return [status(STATUS.IDLE, '')];
     case 'UserPromptSubmit': {
       const prompt = ctx.sharePrompts && typeof payload.prompt === 'string' ? clip(payload.prompt.replace(/\s+/g, ' ').trim(), 90) : '';
-      return [status(STATUS.THINKING, prompt ? `Task: ${prompt}` : 'Received a task')];
+      const out = [status(STATUS.THINKING, prompt ? `Task: ${prompt}` : 'Received a task')];
+      // A new task opens with a short kick-off meeting: the agent that got it
+      // gathers its direct reports at the meeting table to split the work.
+      const team = typeof ctx.team === 'function' ? ctx.team(agent).slice(0, 8) : [];
+      const ms = Number.isFinite(ctx.meetingMs) ? ctx.meetingMs : 20000;
+      if (team.length && ms > 0) out.push({ type: 'meeting', host: agent, agents: team, topic: prompt, durationMs: ms, ts });
+      return out;
     }
     case 'PreToolUse': {
       const tool = typeof payload.tool_name === 'string' ? payload.tool_name : 'tool';

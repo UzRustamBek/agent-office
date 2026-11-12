@@ -29,7 +29,7 @@ If you prefer to edit by hand, `agent-office hooks print` produces ready-to-past
 | Hook event | Result in the office |
 |---|---|
 | `SessionStart` | agent idle, "Session started" |
-| `UserPromptSubmit` | thinking ("Received a task"; the text only with `--share-prompts`) |
+| `UserPromptSubmit` | thinking ("Received a task"; the text only with `--share-prompts`). If the agent has people reporting to it, a **kick-off meeting** starts: it walks to the whiteboard, its direct reports (up to 8) take seats at the meeting table, and after the meeting (20 s, `--meeting <seconds>`, `0` = off) everyone goes back to their desk |
 | `PreToolUse` | `Read` `Glob` `Grep` → reading · `Edit` `Write` → typing · `Bash` → running · `WebSearch` `WebFetch` → searching · `Task` → delegating (+ envelope to the subagent) · MCP tools → running |
 | `PostToolUse` | thinking |
 | `PostToolUseFailure` | error |
@@ -51,9 +51,15 @@ So a typical setup is: your main Claude Code session = `director`; its subagents
 
 ## Privacy
 
-The hook keeps only: event name, session id, `agent_type`, tool name, `message`, and from `tool_input` just `file_path`, `path`, `pattern`, `command`, `description`, `query`, `url`, `subagent_type` (each cut to 300 characters). **Tool results, file contents and transcript paths are dropped before anything is sent.** The server then shows only a file *basename* and a short description, never a full path.
+The hook reduces every payload **before it leaves Claude Code** to: event name, session id, `agent_type`, `agent_id`, tool name, `message`, and from `tool_input` only
 
-The hook prints nothing (stdout would be injected into Claude's context on some events), exits `0` always, waits at most about 1.5 s and does nothing when no server is running.
+* the file *name* of `file_path` / `notebook_path` / `path` (never the folder),
+* the *program* of a shell `command` (`npm`, `git`, never its arguments, which can contain secrets),
+* `pattern` (60), `description` (120), `query` (80) and `subagent_type`.
+
+Tool results, file contents, URLs, transcript paths and your prompt text are never sent. Set `AGENT_OFFICE_SHARE_PROMPTS=1` to forward the first 200 characters of each prompt; the server still shows them only when started with `--share-prompts`. Requests go to `127.0.0.1` over plain HTTP with the bearer token.
+
+The hook prints nothing (stdout would be injected into Claude's context on some events), exits `0` always, waits at most about 2.5 s (1 s to read its input, 1.5 s per request, servers in parallel) and does nothing when no server is running.
 
 ## Manual events
 

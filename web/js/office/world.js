@@ -2,13 +2,14 @@
 // desk when it has work and takes breaks in the lounge while idle.
 
 import { TILE } from '../core/layout.js';
-import { ACTIVE, STATUS } from '../core/model.js';
+import { STATUS } from '../core/model.js';
 import { findPath } from '../core/pathfinding.js';
 import { hash32, mulberry32 } from '../core/rng.js';
 import { defaultLook } from '../core/roster.js';
 
 const SPEED = 46; // px per second
 const DESK_SINK = 7;
+const HURRY = 1.7; // agents called to a meeting walk faster
 
 const SPOT_WEIGHT = { sofa: 4, armchair: 3, coffee: 3, vending: 1, cooler: 2, stool: 3, chair: 2, board: 1 };
 
@@ -53,25 +54,37 @@ export class World {
     this.chars = new Map();
     this.effects = [];
     this.occupied = new Map(); // spot id -> character id
+    this.meetingKey = '';
+    this.seating = new Map(); // character id -> meeting spot
     this.setLayout(roster, layout, now);
   }
 
+  /**
+   * Install a (new) roster and layout. Characters that already exist keep their
+   * look and do not fade in again; when their desk did not move they also keep
+   * walking or sitting where they were, otherwise they sit down at the new desk.
+   */
   setLayout(roster, layout, now = Date.now()) {
+    const sameFloor = this.layout && this.layout.w === layout.w && this.layout.h === layout.h;
     this.layout = layout;
     this.roster = roster;
     const previous = this.chars;
     this.chars = new Map();
     this.occupied.clear();
     this.effects = [];
+    this.meetingKey = '';
+    this.seating = new Map();
     for (const agent of roster.agents) {
       const desk = layout.desks[agent.id];
       if (!desk) continue;
       const old = previous.get(agent.id);
       const color = roster.departments.find((d) => d.id === agent.department)?.color;
       const ch = new Character(agent, desk.seat, now, this.rng, color);
-      if (!old) ch.appear = 0;
-      else ch.appear = 1;
+      ch.appear = old ? 1 : 0;
       ch.breakAt = this._nextBreak(now, true);
+      if (old && sameFloor && old.seat.x === desk.seat.x && old.seat.y === desk.seat.y && old.mode === 'walking' && old.target === 'desk') {
+        for (const k of ['x', 'y', 'tx', 'ty', 'dir', 'path', 'mode', 'target', 'phase', 't']) ch[k] = old[k];
+      }
       this.chars.set(agent.id, ch);
     }
   }
@@ -88,6 +101,40 @@ export class World {
     if (!cfg) return Infinity;
     const [lo, hi] = first ? cfg.first : cfg.gap;
     return now + lo + this.rng() * (hi - lo);
+  }
+
+  /**
+   * Seat everyone of a new meeting: the host at the whiteboard, the others on
+   * the chairs closest to it. Agents on a break there are sent back to work.
+   */
+  _planMeeting(meeting, now) {
+    this.seating = new Map();
+    const plan = this.layout.meeting;
+    if (!meeting || !plan) return;
+    const hostCh = this.chars.get(meeting.host);
+    // fill the table from the middle outwards, so a small meeting looks gathered
+    const cx = plan.host ? plan.host.x + 0.5 : plan.seats.reduce((n, s) => n + s.x, 0) / Math.max(1, plan.seats.length);
+    const seats = [...plan.seats].sort((a, b) => a.y - b.y || Math.abs(a.x - cx) - Math.abs(b.x - cx));
+    if (hostCh) this.seating.set(hostCh.id, plan.host || seats.shift());
+    for (const id of meeting.agents) {
+      if (!this.chars.has(id) || !seats.length) continue;
+      this.seating.set(id, seats.shift());
+    }
+    const taken = new Set([...this.seating.values()].filter(Boolean).map((s) => s.id));
+    for (const ch of this.chars.values()) {
+      if (this.seating.has(ch.id)) continue;
+      if (ch.spot && taken.has(ch.spot.id)) {
+        this._sendToDesk(ch);
+        ch.breakAt = this._nextBreak(now);
+      }
+    }
+    for (const id of taken) this.occupied.delete(id);
+    if (!this.reduceMotion) this.effects.push({ kind: 'gather', at: now, life: 1600 });
+  }
+
+  /** Spot this character should be in for the running meeting, or null. */
+  meetingSpotOf(id) {
+    return this.seating.get(id) || null;
   }
 
   _awayCount() {
@@ -134,6 +181,23 @@ export class World {
   _release(ch) {
     if (ch.spot && this.occupied.get(ch.spot.id) === ch.id) this.occupied.delete(ch.spot.id);
     ch.spot = null;
+  }
+
+  _goMeet(ch, seat) {
+    this._release(ch);
+    ch.meeting = true;
+    ch.spot = seat;
+    this.occupied.set(seat.id, ch.id);
+    if (ch.tx === seat.x && ch.ty === seat.y) {
+      this._settleAtSpot(ch, 0);
+      return;
+    }
+    if (!this._walkTo(ch, seat, 'spot')) {
+      // no path (should not happen): appear there
+      ch.tx = seat.x;
+      ch.ty = seat.y;
+      this._settleAtSpot(ch, 0);
+    }
   }
 
   _walkTo(ch, goal, target) {
@@ -189,13 +253,46 @@ export class World {
   }
 
   /** Advance every character. `statusOf(id)` returns the agent's current status. */
-  update(dt, now, statusOf) {
+  update(dt, now, statusOf, meeting = null) {
     this.effects = this.effects.filter((e) => now - e.at < e.life);
+    const live = meeting && now < meeting.endsAt ? meeting : null;
+    const key = live ? `${live.host}@${live.startedAt}` : '';
+    if (key !== this.meetingKey) {
+      const wasHost = this.meetingKey ? this.meetingKey.split('@')[0] : null;
+      const attendees = [...this.seating.keys()];
+      this.meetingKey = key;
+      if (live) this._planMeeting(live, now);
+      else {
+        this.seating = new Map();
+        // the meeting is over: hand out the tasks and go back to work
+        const host = wasHost && this.chars.get(wasHost);
+        if (host && !this.reduceMotion) for (const id of attendees) if (id !== wasHost) this.effects.push({ kind: 'packet', at: now, from: host.id, to: id, life: 1100 });
+      }
+    }
+
     for (const ch of this.chars.values()) {
       ch.t += dt;
       if (ch.appear < 1) ch.appear = Math.min(1, ch.appear + dt * 2.5);
       const st = statusOf(ch.id);
       const wantsDesk = st !== STATUS.IDLE;
+      const seat = this.seating.get(ch.id) || null;
+
+      if (seat) {
+        // in a meeting: go to (or stay at) the assigned place, whatever the status
+        if (ch.mode === 'walking') {
+          if (ch.spot?.id !== seat.id) this._goMeet(ch, seat);
+          else this._step(ch, dt, now);
+        } else if (ch.mode !== 'spot' || ch.spot?.id !== seat.id) this._goMeet(ch, seat);
+        continue;
+      }
+      if (ch.meeting) {
+        // left over from a finished meeting
+        ch.meeting = false;
+        this._sendToDesk(ch);
+        ch.breakAt = this._nextBreak(now);
+        if (ch.mode === 'walking') this._step(ch, dt, now);
+        continue;
+      }
 
       if (ch.mode === 'seated') {
         if (!wantsDesk && now >= ch.breakAt) {
@@ -229,7 +326,7 @@ export class World {
   }
 
   _step(ch, dt, now) {
-    let budget = SPEED * dt;
+    let budget = SPEED * dt * (ch.meeting ? HURRY : 1);
     while (budget > 0 && ch.path.length) {
       const next = ch.path[0];
       const isLast = ch.path.length === 1;
@@ -274,6 +371,14 @@ export class World {
 
     if (ch.mode === 'walking') {
       base.moving = true;
+      return base;
+    }
+    if (ch.mode === 'spot' && ch.meeting) {
+      const s = ch.spot;
+      base.sink = s?.sink || 0;
+      const speaking = this.speakerAt(now) === ch.id;
+      if (s?.kind === 'board') base.arms = speaking || Math.floor(t * 1.5) % 3 ? 'ask' : 'raise';
+      else base.arms = speaking ? (Math.floor(t * 3) % 2 ? 'raise' : 'chin') : Math.floor(t / 5 + (hash32(ch.id) % 5)) % 4 === 0 ? 'cup' : 'rest';
       return base;
     }
     if (ch.mode === 'spot') {
@@ -325,7 +430,26 @@ export class World {
     return base;
   }
 
-  isActive(status) {
-    return ACTIVE.has(status);
+  /** Who is talking in the meeting right now: the host half of the time, then each seated attendee in turn. */
+  speakerAt(now) {
+    if (!this.meetingKey) return null;
+    const present = [...this.seating.keys()].filter((id) => {
+      const c = this.chars.get(id);
+      return c && c.mode === 'spot' && c.meeting;
+    });
+    if (!present.length) return null;
+    const host = this.meetingKey.split('@')[0];
+    const slot = Math.floor(now / 2200);
+    if (slot % 2 === 0 && present.includes(host)) return host;
+    const others = present.filter((id) => id !== host);
+    if (!others.length) return present[0];
+    return others[Math.floor(slot / 2) % others.length];
   }
+
+  /** True while somebody is still walking to the meeting. */
+  gathering() {
+    for (const id of this.seating.keys()) if (this.chars.get(id)?.mode === 'walking') return true;
+    return false;
+  }
+
 }

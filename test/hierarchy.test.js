@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { RosterError, normalizeRoster } from '../web/js/core/roster.js';
+import { normalizeRoster } from '../web/js/core/roster.js';
 import { ensureAgent, createState } from '../web/js/core/model.js';
 import { buildLayout, unreachableSeats } from '../web/js/core/layout.js';
 import { createSimulator } from '../web/js/sim/demo.js';
@@ -73,24 +73,22 @@ test('reportsTo accepts names, null means top-level, and bad values are reported
   });
   assert.equal(byId(r).c.reportsTo, 'b');
   assert.equal(byId(r).d.level, 0); // several top-level agents are allowed
-  assert.throws(
-    () => normalizeRoster({ agents: [{ id: 'a', name: 'A', reportsTo: 'nobody-here' }] }),
-    (e) => e instanceof RosterError && /not an agent/.test(e.message),
-  );
-  assert.throws(
-    () => normalizeRoster({ agents: [{ id: 'a', name: 'A', reportsTo: 'a' }] }),
-    (e) => e instanceof RosterError && /itself/.test(e.message),
-  );
-  assert.throws(
-    () =>
-      normalizeRoster({
-        agents: [
-          { id: 'a', name: 'A', reportsTo: 'b' },
-          { id: 'b', name: 'B', reportsTo: 'a' },
-        ],
-      }),
-    (e) => e instanceof RosterError && /cycle/.test(e.message),
-  );
+  // problems do not throw the roster away: the agent is placed automatically and a warning is listed
+  const typo = normalizeRoster({ agents: [{ id: 'boss', name: 'Boss' }, { id: 'a', name: 'A', reportsTo: 'nobody-here' }] });
+  assert.equal(byId(typo).a.reportsTo, 'boss');
+  assert.match(typo.warnings[0], /not an agent/);
+  const self = normalizeRoster({ agents: [{ id: 'a', name: 'A', reportsTo: 'a' }] });
+  assert.equal(byId(self).a.reportsTo, null);
+  assert.match(self.warnings[0], /itself/);
+  const loop = normalizeRoster({
+    agents: [
+      { id: 'a', name: 'A', reportsTo: 'b' },
+      { id: 'b', name: 'B', reportsTo: 'a' },
+    ],
+  });
+  assert.match(loop.warnings[0], /cycle/);
+  assert.ok(loop.agents.some((x) => x.level === 0), 'the loop is broken at the top');
+  assert.deepEqual(normalizeRoster(example).warnings, []);
 });
 
 test('layout: the top zone sits alone above the departments, desks follow the levels', () => {
@@ -194,4 +192,75 @@ test('switching breaks off sends strolling agents back to their desks', () => {
   world.setBreaks('off');
   for (let i = 0; i < 600; i++, t += 200) world.update(0.2, t, idle);
   assert.equal([...world.chars.values()].filter((c) => c.mode !== 'seated').length, 0);
+});
+
+// --- meetings ---------------------------------------------------------------
+import { applyEvent, meetingMembers, normalizeEvent, tick, snapshot, restore } from '../web/js/core/model.js';
+import { fromClaudeHook } from '../server/events.js';
+
+test('meeting events are validated and kept in the state until they end', () => {
+  assert.equal(normalizeEvent({ type: 'meeting', host: 'a', agents: [] }), null);
+  assert.equal(normalizeEvent({ type: 'meeting', host: 'bad id!', agents: ['b'] }), null);
+  const e = normalizeEvent({ type: 'meeting', host: 'director', agents: ['director', 'planner', 'planner', 'x y'], topic: 'Plan', durationMs: 5 });
+  assert.deepEqual(e.agents, ['planner']); // host, duplicates and invalid ids removed
+  assert.equal(e.durationMs, 4000); // clamped to the minimum
+
+  const state = createState(normalizeRoster(example));
+  applyEvent(state, normalizeEvent({ type: 'meeting', host: 'director', agents: ['planner', 'analyst'], topic: 'Q3', durationMs: 10000 }), 1000);
+  assert.deepEqual(meetingMembers(state, 2000), ['director', 'planner', 'analyst']);
+  assert.equal(state.log.at(-1).kind, 'meeting');
+  assert.equal(restore(JSON.parse(JSON.stringify(snapshot(state)))).meeting.host, 'director');
+  assert.ok(tick(state, 11001).includes('planner'));
+  assert.equal(state.meeting, null);
+});
+
+test('a prompt in Claude Code opens a kick-off meeting with the direct reports', () => {
+  const roster = normalizeRoster(example);
+  const team = (id) => roster.agents.find((a) => a.id === id)?.team || [];
+  const ctx = { has: (id) => roster.agents.some((a) => a.id === id), main: 'director', team, meetingMs: 15000 };
+  const out = fromClaudeHook({ hook_event_name: 'UserPromptSubmit', prompt: 'secret text' }, ctx);
+  const m = out.find((e) => e.type === 'meeting');
+  assert.equal(m.host, 'director');
+  assert.deepEqual(m.agents, team('director').slice(0, 8));
+  assert.equal(m.topic, ''); // prompts stay private without --share-prompts
+  assert.ok(!fromClaudeHook({ hook_event_name: 'UserPromptSubmit' }, { ...ctx, meetingMs: 0 }).some((e) => e.type === 'meeting'));
+  // an agent without a team just starts thinking
+  const solo = fromClaudeHook({ hook_event_name: 'UserPromptSubmit', agent_type: 'security' }, ctx);
+  assert.ok(!solo.some((e) => e.type === 'meeting'));
+});
+
+test('world: attendees walk to the meeting, sit, and go back to their desks afterwards', () => {
+  const roster = normalizeRoster(example);
+  const layout = buildLayout(roster);
+  const world = new World(roster, layout, { seed: 2, now: 0, breaks: 'off' });
+  const meeting = { host: 'director', agents: ['planner', 'architect', 'writer'], topic: 'x', startedAt: 0, endsAt: 60000 };
+  const idle = () => STATUS.IDLE;
+  let t = 0;
+  for (; t < 40000; t += 100) world.update(0.1, t, idle, meeting);
+  const seats = new Set();
+  for (const id of ['director', 'planner', 'architect', 'writer']) {
+    const ch = world.get(id);
+    assert.equal(ch.mode, 'spot', `${id} is seated in the meeting`);
+    assert.ok(ch.meeting);
+    seats.add(ch.spot.id);
+  }
+  assert.equal(seats.size, 4, 'everyone has their own place');
+  assert.equal(world.get('director').spot.kind, 'board', 'the host stands at the whiteboard');
+  assert.ok(world.speakerAt(t));
+  for (; t < 120000; t += 100) world.update(0.1, t, idle, meeting); // meeting ended at 60 s
+  for (const id of ['director', 'planner', 'architect', 'writer']) assert.equal(world.get(id).mode, 'seated', `${id} is back at the desk`);
+});
+
+test('demo: big tasks open with a meeting, delegations follow it, one meeting at a time', () => {
+  const roster = normalizeRoster(example);
+  const events = [];
+  const sim = createSimulator({ getRoster: () => roster, emit: (e) => events.push({ ...e, at: clock }), seed: 9, speed: 1, maxScenarios: 3 });
+  let clock = 0;
+  for (; clock < 400000; clock += 100) sim.tick(clock);
+  const meetings = events.filter((e) => e.type === 'meeting');
+  assert.ok(meetings.length >= 2);
+  for (let i = 1; i < meetings.length; i++) assert.ok(meetings[i].at >= meetings[i - 1].at + meetings[i - 1].durationMs, 'meetings never overlap');
+  const m = meetings[0];
+  const first = events.find((e) => e.type === 'delegate' && e.from === m.host && e.at >= m.at);
+  assert.ok(first.at >= m.at + m.durationMs, 'work is handed out after the meeting');
 });

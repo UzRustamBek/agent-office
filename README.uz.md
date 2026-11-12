@@ -21,6 +21,7 @@ Agentlar ro‘yxati *kim borligini* aytadi. Ofisga bir qarash esa *kim band, kim
 - **Holatni bir qarashda ko‘ring.** Yozmoqda, o‘qimoqda, qidirmoqda, buyruq bajarmoqda, o‘ylayapti, topshiriq bermoqda, sizni kutmoqda, ruxsat so‘ramoqda, tugatdi, xatolik. Har birining o‘z holati, ekrani, rangi va pufakchasi bor.
 - **Jamoaviy ishni ko‘ring.** Bir agent boshqasiga vazifa bersa, konvert tashkilotingizning hisobot chiziqlari bo‘ylab uchib o‘tadi.
 - **Kim kimga bo‘ysunishini ko‘ring.** Rahbar eng tepada, bo‘limlar uning ostida, har bir bo‘ysunish darajasi esa stollarning alohida qatorida.
+- **Majlisni kuzating.** Claude Code’da asosiy agentga vazifa bersangiz, u avval jamoasini majlis stoliga chaqiradi, ishni doskada taqsimlaydi, keyin hamma o‘z stoliga qaytadi.
 - **Qachon aralashishni biling.** «Sizni kutmoqda» hisoblagichi miltillaydi, personaj qo‘lini ko‘taradi, xohlasangiz signal ham chalinadi.
 - **Hammasi sizniki.** Bo‘limlar, nomlar, rollar, ko‘rinish va asboblar oddiy JSON fayldan olinadi yoki to‘g‘ridan-to‘g‘ri Claude Code agent papkalaringizdan import qilinadi.
 
@@ -115,6 +116,7 @@ Protokol: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#event-protocol).
 | **Ofis** | Bo‘limlar gilamli zonalarga aylanadi, har agentga bitta stol; yana dam olish xonasi, oshxona va majlis xonasi. Maket rosterdan avtomatik quriladi (1 dan 120 gacha agent). |
 | **Ierarxiya** | Yurish mumkin bo‘lgan tashkiliy sxema: tepada rahbar, so‘ng bo‘lim boshliqlari, so‘ng ishni bajaruvchilar; ular hisobot chiziqlari bilan bog‘langan. Rahbar va boshliqlarni tilla va po‘lat rangli stol yorlig‘i ajratib turadi. [Ierarxiya](docs/AGENTS-FORMAT.md#hierarchy). |
 | **Personajlar** | To‘liq kod bilan chizilgan (rasm fayllari yo‘q). 6 teri rangi, 8 soch turmagi, aksessuarlar, jamoa rangidagi ko‘ylak, to‘rt yo‘nalishda yurish va har holat uchun alohida poza. |
+| **Majlis** | Yangi vazifa majlis bilan boshlanadi: rahbar doska oldida, jamoa stol atrofida, kun tartibiga stikerlar qo‘shiladi, vazifa kartochkalari tarqatiladi, gapiruvchi pufakchasi navbat bilan o‘tadi, banner vaqtni sanaydi. So‘ng vazifalar konvert bo‘lib uchadi. |
 | **Hayot** | Ishlayotgan agentlar stolida o‘tiradi. Band bo‘lmaganlar kofe yoki divanga borishi mumkin (standart bo‘yicha kamdan-kam; *Tanaffuslar* sozlamasi bilan hech qachon yoki tez-tez qilish mumkin), ish kelsa qaytadi. |
 | **Ekranlar** | Har monitor agent nima qilayotganini ko‘rsatadi: kod, terminal, hujjat, qidiruv natijalari, topshiriq grafi, «?» yoki «!» belgisi. |
 | **Ro‘yxat paneli** | Qidiruv, filtr (faol / sizni kutmoqda / bo‘sh), bo‘limlar bo‘yicha guruhlar, jonli faollik matni. |
@@ -129,7 +131,7 @@ Klaviatura: `/` qidiruv · `f` moslash · `+` `-` masshtab · `l` jurnal · `t` 
 ## Maxfiylik va xavfsizlik
 
 - **Faqat lokal.** Server odatda `127.0.0.1` da ishlaydi. Hech narsa tashqariga yuborilmaydi.
-- **Kichik hook ma’lumotlari.** Hook faqat asbob nomi, fayl *nomi* (yo‘lsiz), qisqa buyruq tavsifi va identifikatorlarni yuboradi. Fayl mazmuni, asbob natijalari va to‘liq yo‘llar Claude Code’dan chiqmaydi.
+- **Kichik hook ma’lumotlari.** Hookning o‘zi har bir ma’lumotni asbob nomi, fayl *nomi* (papkasiz), buyruqning dasturi (argumentlarsiz), qisqa tavsiflar va identifikatorlargacha qisqartiradi. Fayl mazmuni, asbob natijalari, URL, transkript yo‘llari va promptlar Claude Code’dan chiqmaydi (promptlar faqat `AGENT_OFFICE_SHARE_PROMPTS=1` bilan).
 - **Prompt matnlari yashirin**, faqat `--share-prompts` bilan ko‘rinadi.
 - **Yozish uchun token kerak.** `POST` so‘rovlar tasodifiy bearer token, `application/json`, hajm chegarasi va DNS rebinding’ga qarshi `Host` tekshiruvini talab qiladi. Sahifa qat’iy Content-Security-Policy bilan keladi.
 - **Hooklar faqat siz tasdiqlaganni o‘zgartiradi.** `hooks install` siz `--write` qo‘shmaguncha sinov rejimida; avval sozlamalaringizdan zaxira nusxa oladi; `uninstall` faqat o‘zining yozuvlarini olib tashlaydi.

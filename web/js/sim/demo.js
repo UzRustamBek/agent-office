@@ -41,13 +41,14 @@ const WORK = [
  * @param {{ getRoster: () => any, emit: (e: object) => void, seed?: number,
  *           speed?: number, maxScenarios?: number, spawnEveryMs?: [number, number] }} opts
  */
-export function createSimulator({ getRoster, emit, seed = 7, speed = 1, maxScenarios = 3, spawnEveryMs = [3500, 8000] }) {
+export function createSimulator({ getRoster, emit, seed = 7, speed = 1, maxScenarios = 3, spawnEveryMs = [3500, 8000], meetings = true }) {
   const rng = mulberry32(seed);
   let queue = []; // { at, fn } sorted by `at`
   let scenarios = 0;
   let nextSpawn = 0;
   let busy = new Set();
   let stopped = false;
+  let meetingUntil = 0; // one meeting room: no new meeting before the current one ends
 
   const sc = (ms) => Math.max(40, ms / speed);
   const schedule = (at, fn) => {
@@ -107,9 +108,21 @@ export function createSimulator({ getRoster, emit, seed = 7, speed = 1, maxScena
 
     const crew = shuffle(rng, free).slice(0, 1 + Math.floor(rng() * Math.min(depth === 0 ? 3 : 2, free.length)));
     busy.add(agent.id);
+    for (const m of crew) busy.add(m.id); // reserved for this task from the start
     let t = startAt;
     schedule(t, () => status(agent.id, STATUS.THINKING, `Planning: ${task}`, null, Date.now()));
     t += sc(range(rng, 1400, 2400));
+    if (depth === 0 && meetings && t >= meetingUntil) {
+      // kick-off meeting: everybody walks to the meeting table first. Walking
+      // speed does not follow the demo speed, so the meeting has a real-time floor.
+      const durationMs = Math.max(20000, sc(26000));
+      schedule(t, () => {
+        emit({ type: 'meeting', host: agent.id, agents: crew.map((m) => m.id), topic: task, durationMs, ts: Date.now() });
+        status(agent.id, STATUS.DELEGATING, `Kick-off meeting: ${task}`, null, Date.now());
+      });
+      t += durationMs;
+      meetingUntil = t + 1000;
+    }
     schedule(t, () => status(agent.id, STATUS.DELEGATING, `Briefing ${crew.length} agent${crew.length > 1 ? 's' : ''}`, 'Task', Date.now()));
     let latest = t;
     crew.forEach((member, i) => {

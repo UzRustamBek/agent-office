@@ -1070,3 +1070,12 @@ button {
 .tag.person:hover {
   background: color-mix(in srgb, var(--accent) 20%, var(--panel-hi));
 }
+
+/* --- meeting ---------------------------------------------------------------- */
+.state[data-meeting="true"] .dot {
+  background: #f0a03c;
+  box-shadow: 0 0 9px #f0a03c;
+}
+.state[data-meeting="true"] .label {
+  color: #f0a03c;
+}

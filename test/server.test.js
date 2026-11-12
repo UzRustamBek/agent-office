@@ -212,3 +212,71 @@ test('hook script: forwards a slimmed payload and always exits 0', async () => {
   const none = await run(JSON.stringify(payload), { AGENT_OFFICE_HOME: path.join(home, 'missing') });
   assert.equal(none.code, 0);
 });
+
+test('hook script: only file names and program names leave Claude Code', async () => {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  let got = null;
+  const capture = http.createServer((req, res) => {
+    let b = '';
+    req.on('data', (d) => (b += d));
+    req.on('end', () => {
+      got = JSON.parse(b);
+      res.writeHead(202).end('{}');
+    });
+  });
+  await new Promise((r) => capture.listen(0, '127.0.0.1', r));
+  const url = `http://127.0.0.1:${capture.address().port}`;
+  const run = (payload, env = {}) =>
+    new Promise((resolve) => {
+      const child = spawn(process.execPath, [path.join(root, 'hook', 'agent-office-hook.js')], {
+        env: { ...process.env, AGENT_OFFICE_URL: url, AGENT_OFFICE_TOKEN: 't', AGENT_OFFICE_SHARE_PROMPTS: '', ...env },
+        stdio: ['pipe', 'ignore', 'ignore'],
+      });
+      child.on('close', resolve);
+      child.stdin.end(JSON.stringify(payload));
+    });
+  try {
+    await run({
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Bash',
+      prompt: 'my private prompt',
+      tool_input: { command: '/usr/bin/curl -H "Authorization: Bearer SECRET" https://x', file_path: 'C:\\Users\\me\\secret\\notes.md', url: 'https://private.example/a?token=1' },
+    });
+    const sent = JSON.stringify(got);
+    assert.equal(got.payload.tool_input.command, 'curl');
+    assert.equal(got.payload.tool_input.file_path, 'notes.md');
+    assert.ok(!sent.includes('SECRET') && !sent.includes('Users') && !sent.includes('private.example') && !sent.includes('private prompt'), sent);
+    await run({ hook_event_name: 'UserPromptSubmit', prompt: 'share me' }, { AGENT_OFFICE_SHARE_PROMPTS: '1' });
+    assert.equal(got.payload.prompt, 'share me');
+  } finally {
+    capture.close();
+  }
+});
+
+test('a malformed URL is a 400, not a crash', async () => {
+  const res = await request('GET', '/%E0%A4%A');
+  assert.equal(res.status, 400);
+});
+
+test('exposed on 0.0.0.0: IP addresses and --allow-host names pass, other host names do not', async () => {
+  const exposed = createOfficeServer({ roster: loadRosterFile(path.join(root, 'agents.example.json')), host: '0.0.0.0', port: 0, token: TOKEN, quiet: true, advertise: false, allowHosts: ['office.lan'] });
+  const info = await exposed.start();
+  const port = new URL(info.url).port;
+  const get = (hostHeader) =>
+    new Promise((resolve, reject) => {
+      const req = http.request({ hostname: '127.0.0.1', port, path: '/api/health', headers: { host: hostHeader } }, (res) => {
+        res.resume();
+        resolve(res.statusCode);
+      });
+      req.on('error', reject);
+      req.end();
+    });
+  try {
+    assert.equal(await get('evil.example:80'), 403);
+    assert.equal(await get(`192.168.1.20:${port}`), 200);
+    assert.equal(await get('office.lan'), 200);
+    assert.equal(await get('localhost'), 200);
+  } finally {
+    await exposed.stop();
+  }
+});

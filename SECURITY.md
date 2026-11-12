@@ -5,7 +5,7 @@
 Agent Office is a **local tool**. By default the server listens on `127.0.0.1` only and sends nothing to the internet.
 
 * Read endpoints (`GET`) expose agent names, roles and live status to whoever can reach the port. Keep the default bind address unless you are on a network you trust.
-* Write endpoints (`POST /api/events`, `/api/hook`) require a random bearer token, `Content-Type: application/json` and a 128 KB body limit, and are never CORS-enabled. When bound to loopback, requests whose `Host` header is not a loopback name are refused (DNS-rebinding protection).
+* Write endpoints (`POST /api/events`, `/api/hook`) require a random bearer token, `Content-Type: application/json` and a 128 KB body limit, and are never CORS-enabled. Requests whose `Host` header is not a loopback name are refused (DNS-rebinding protection). With `--host` set to a network address, plain IP addresses are accepted too, and extra names can be allowed with `--allow-host`. The hook forwards file names but never folders, URLs or command arguments (see docs/HOOKS.md).
 * The page is served with a strict Content-Security-Policy (`default-src 'self'`, no inline script or style) and builds its DOM with `textContent` only.
 * The hook script forwards a minimal subset of Claude Code's payload and drops file contents, tool results and transcript paths.
 * `hooks install` changes your Claude Code settings only with `--write`, creates a timestamped backup first, and `uninstall` removes only entries it created.

@@ -2,6 +2,24 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.2.0]
+
+### Added
+- **Kick-off meetings.** A task given to an agent with a team (Claude Code `UserPromptSubmit`, or the demo) starts with a meeting: the host walks to the whiteboard, the team to the meeting table, an agenda fills with sticky notes, task cards are dealt, a speaker bubble goes round, and a banner counts down. Then everyone walks back and the tasks fly out. New `meeting` event, `--meeting <seconds>` flag.
+- `--allow-host` for reverse proxies; roster `warnings` (a `reportsTo` typo or a reporting loop no longer rejects the whole roster).
+- Content-Security-Policy meta tag for the static demo; translated accessibility labels.
+
+### Fixed (code audit)
+- The hook now strips folders, command arguments, URLs and prompts before sending (it sent more than the docs said).
+- `hooks install/uninstall` kept removing the user's own hook when it shared a matcher group with ours.
+- Names in scripts other than Latin and Cyrillic collapsed into one id.
+- Reports on a wrapped row had no reporting line; very deep chains made the office extremely tall; "Lead generation" or "Assistant to the Director" was taken for a department head.
+- DNS-rebinding check also applies when the server is exposed with `--host`; malformed URLs return 400.
+- A* path finding with reused buffers (about 10x faster on large offices).
+- A roster update no longer resets every character and the activity log; ids like `Writer` match the roster's `writer`; the demo restarts cleanly after a roster reload and guests survive it.
+- The static demo could keep stale modules after a deploy (every URL is now versioned); the deploy runs the checks and tests first and is never cancelled halfway.
+- URL parameters are validated and no longer saved as settings; the roster panel is a real tree.
+
 ## [1.1.0]
 
 ### Added

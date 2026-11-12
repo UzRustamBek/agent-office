@@ -53,14 +53,30 @@ export function buildHookConfig({ all = false, scriptPath, pinnedAgent } = {}) {
 }
 
 const isOurs = (h) => typeof h?.command === 'string' && h.command.split('\\').join('/').includes(HOOK_MARKER);
-const isOurEntry = (entry) => Array.isArray(entry?.hooks) && entry.hooks.some(isOurs);
+
+/**
+ * Strip our commands out of a list of matcher groups. A group that also holds
+ * the user's own hooks keeps them; a group left empty is dropped.
+ */
+function withoutOurs(entries) {
+  const out = [];
+  for (const e of entries) {
+    if (!e || !Array.isArray(e.hooks) || !e.hooks.some(isOurs)) {
+      out.push(e);
+      continue;
+    }
+    const rest = e.hooks.filter((h) => !isOurs(h));
+    if (rest.length) out.push({ ...e, hooks: rest });
+  }
+  return out;
+}
 
 /** Merge our hooks into an existing settings object, replacing older Agent Office entries. */
 export function mergeHooks(settings, config) {
   const next = { ...(settings || {}) };
   const hooks = { ...(next.hooks || {}) };
   for (const [event, entries] of Object.entries(config.hooks)) {
-    const existing = Array.isArray(hooks[event]) ? hooks[event].filter((e) => !isOurEntry(e)) : [];
+    const existing = Array.isArray(hooks[event]) ? withoutOurs(hooks[event]) : [];
     hooks[event] = [...existing, ...entries];
   }
   next.hooks = hooks;
@@ -77,7 +93,7 @@ export function removeHooks(settings) {
       hooks[event] = entries;
       continue;
     }
-    const kept = entries.filter((e) => !isOurEntry(e));
+    const kept = withoutOurs(entries);
     if (kept.length) hooks[event] = kept;
   }
   if (Object.keys(hooks).length) next.hooks = hooks;

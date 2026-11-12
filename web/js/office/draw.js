@@ -347,7 +347,7 @@ export function furnitureLayers(f, env) {
     case 'whiteboard':
       return [{ z: (f.y + 2) * T - 0.1, draw: (c) => drawWhiteboard(c, px, py, env) }];
     case 'meeting_table':
-      return [{ z: (f.y + 2) * T - 0.2, draw: (c) => drawMeetingTable(c, px, py) }];
+      return [{ z: (f.y + 2) * T - 0.2, draw: (c) => drawMeetingTable(c, px, py, env) }];
     case 'low_table':
       return [{ z: (f.y + 1) * T - 0.1, draw: (c) => drawLowTable(c, px, py) }];
     case 'chair':
@@ -638,12 +638,28 @@ function drawWhiteboard(c, px, py, env) {
   const blink = env.delegating > 0 && Math.floor(env.t * 2) % 2;
   rect(c, px + 47, py + 15, 6, 5, blink ? '#ffe28a' : '#f2c94c');
   rect(c, px + 33, py + 15, 6, 5, '#ff9ec0');
+  if (env.meeting) {
+    // agenda being filled in: one sticky note per stage of the meeting
+    const notes = ['#ffe28a', '#9fe3c0', '#ff9ec0', '#bcd3ff', '#ffc79a'];
+    const n = 1 + Math.floor(env.meeting.progress * notes.length);
+    rect(c, px + 5, py + 3, 54, 19, '#f6f4ec');
+    rect(c, px + 8, py + 5, 22, 2, '#3a4262'); // title
+    for (let i = 0; i < Math.min(n, notes.length); i++) {
+      const nx = px + 8 + i * 10;
+      rect(c, nx, py + 10, 8, 7, notes[i]);
+      rect(c, nx + 1, py + 12, 5, 1, 'rgba(0,0,0,0.25)');
+      rect(c, nx + 1, py + 14, 4, 1, 'rgba(0,0,0,0.2)');
+    }
+    // "in session" light
+    if (Math.floor(env.t * 2) % 2 === 0) rect(c, px + 54, py + 4, 3, 3, '#e5534b');
+    rect(c, px + 54, py + 4, 3, 1, '#ff9a8f');
+  }
   // marker tray
   rect(c, px + 14, py + 23, 36, 2, '#7c859b');
   rect(c, px + 18, py + 22, 4, 1, '#3fb68b');
   rect(c, px + 24, py + 22, 4, 1, '#e5534b');
 }
-function drawMeetingTable(c, px, py) {
+function drawMeetingTable(c, px, py, env = {}) {
   rect(c, px + 2, py + 4, 92, 24, '#b98b5d');
   rect(c, px + 2, py + 4, 92, 2, '#d1a678');
   rect(c, px + 2, py + 24, 92, 4, '#8a6440');
@@ -659,6 +675,20 @@ function drawMeetingTable(c, px, py) {
   });
   rect(c, px + 56, py + 11, 5, 5, '#3a4262');
   rect(c, px + 57, py + 12, 3, 3, '#4cd08b');
+  if (env.meeting) {
+    // during a meeting: a notepad and a steaming cup in front of every chair
+    for (let i = 0; i < 6; i++) {
+      const x = px + 4 + i * 16;
+      rect(c, x + 2, py + 5, 6, 4, '#fbf8ee');
+      rect(c, x + 3, py + 6, 4, 1, '#8aa0d8');
+      rect(c, x + 10, py + 5, 3, 3, '#f1eee3');
+      rect(c, x + 10, py + 5, 3, 1, '#7a4a2a');
+      if (Math.floor(env.t * 2 + i) % 3 === 0) rect(c, x + 11, py + 3, 1, 1, 'rgba(255,255,255,0.7)');
+    }
+    // the task cards, dealt out as the meeting goes on
+    const cards = Math.floor(env.meeting.progress * 6);
+    for (let i = 0; i < cards; i++) rect(c, px + 8 + i * 14, py + 17, 9, 5, i % 2 ? '#ffe6cf' : '#d9f5e6');
+  }
 }
 function drawLowTable(c, px, py) {
   rect(c, px + 3, py + 5, 42, 7, '#d7c3a0');

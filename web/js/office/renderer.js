@@ -296,6 +296,8 @@ export class OfficeRenderer {
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(3, 5, layout.pxW, layout.pxH);
     ctx.drawImage(this.staticCanvas, 0, 0);
+    const meeting = this.hooks.getMeeting?.() || null;
+    if (meeting && layout.meeting) this._drawMeetingFloor(meeting, now, settings);
     drawClock(ctx, layout, date);
 
     let activeCount = 0;
@@ -312,6 +314,7 @@ export class OfficeRenderer {
       activeCount,
       delegating,
       statusOf: (id) => this.hooks.getAgent(id)?.status || STATUS.IDLE,
+      meeting: meeting ? { progress: clamp((now - meeting.startedAt) / (meeting.endsAt - meeting.startedAt), 0, 1), gathering: world.gathering() } : null,
       colorOfAgent: (id) => this.agentColor.get(id) || '#6c8cff',
     };
 
@@ -368,7 +371,39 @@ export class OfficeRenderer {
       ctx.globalCompositeOperation = 'source-over';
     }
 
+    if (night && meeting && layout.meeting) {
+      // the meeting room lamp stays on at night
+      const r = layout.meeting.room;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = '#ffcf7a';
+      ctx.fillRect(r.x * TILE, r.y * TILE, r.w * TILE, r.h * TILE);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
     this._drawOverlay(now, settings);
+  }
+
+  /** Warm spotlight and a moving dashed border on the meeting room floor. */
+  _drawMeetingFloor(meeting, now, settings) {
+    const { ctx } = this;
+    const r = this.layout.meeting.room;
+    const x = r.x * TILE + 2;
+    const y = r.y * TILE + 2;
+    const w = r.w * TILE - 4;
+    const h = r.h * TILE - 4;
+    const still = settings.reduceMotion;
+    const pulse = still ? 0.5 : 0.5 + 0.5 * Math.sin(now / 420);
+    ctx.fillStyle = `rgba(255, 214, 120, ${0.1 + 0.06 * pulse})`;
+    ctx.fillRect(x, y, w, h);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(240, 160, 60, 0.85)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.lineDashOffset = still ? 0 : -((now / 60) % 7);
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.restore();
   }
 
   _drawOverlay(now, settings) {
@@ -392,6 +427,10 @@ export class OfficeRenderer {
         ctx.fillText(label, c.x, c.y);
       }
     }
+
+    const meeting = this.hooks.getMeeting?.() || null;
+    const speaker = meeting ? world.speakerAt(now) : null;
+    if (meeting && layout.meeting && this.zoom >= 0.5) this._drawMeetingBanner(meeting, now, u);
 
     const sorted = [...world.chars.values()].sort((a, b) => a.y - b.y);
     for (const ch of sorted) {
@@ -420,7 +459,7 @@ export class OfficeRenderer {
       }
 
       // bubble
-      const bubble = this._bubbleFor(agent, now);
+      const bubble = ch.id === speaker && ch.meeting ? this._speechBubble(ch.id, now) : this._bubbleFor(agent, now);
       let top = head.y - 4 * u;
       if (bubble && settings.bubbles !== false) {
         this._drawBubble(bubble, head.x, top, u, now);
@@ -436,7 +475,9 @@ export class OfficeRenderer {
           : settings.names === 'hover'
             ? selected || hover
             : selected;
-      if (showName) {
+      // around the meeting table only the speaker wears a tag (the seats are too close)
+      const crowded = ch.meeting && ch.mode === 'spot' && ch.id !== speaker && !selected && !hover;
+      if (showName && !crowded) {
         const size = clamp(10.5 * u, 9, 14);
         ctx.font = `600 ${size}px ui-sans-serif, system-ui, "Segoe UI", sans-serif`;
         const tier = this.agentTier.get(ch.id);
@@ -472,6 +513,53 @@ export class OfficeRenderer {
         }
       }
     }
+  }
+
+  _speechBubble(id, now) {
+    const IDEAS = ['💡', '📌', '📊', '✍️', '👍', '🎯', '🗂️', '⏱️'];
+    const slot = Math.floor(now / 2200);
+    return { glyph: IDEAS[(slot + id.length) % IDEAS.length], color: '#ffffff', text: '#1d2238', outline: '#f0a03c', emoji: true };
+  }
+
+  _drawMeetingBanner(meeting, now, u) {
+    const { ctx, world } = this;
+    const r = this.layout.meeting.room;
+    const c = this.toScreen((r.x + r.w / 2) * TILE, r.y * TILE - 4);
+    const t = this.hooks.t || ((k) => k);
+    const total = meeting.agents.length + 1;
+    const seated = [...world.seating.keys()].filter((id) => world.get(id)?.mode === 'spot').length;
+    const head = world.gathering() ? `${t('meeting.title')} · ${t('meeting.gathering')} ${seated}/${total}` : `${t('meeting.title')} · ${total} ${t('meeting.people')}`;
+    const topic = meeting.topic ? (meeting.topic.length > 40 ? meeting.topic.slice(0, 39) + '…' : meeting.topic) : '';
+    const size = clamp(10.5 * u, 9, 14);
+    ctx.font = `700 ${size}px ui-sans-serif, system-ui, "Segoe UI", sans-serif`;
+    const w1 = ctx.measureText('📋 ' + head).width;
+    ctx.font = `500 ${size * 0.92}px ui-sans-serif, system-ui, "Segoe UI", sans-serif`;
+    const w2 = topic ? ctx.measureText(topic).width : 0;
+    const w = Math.max(w1, w2) + 24 * u;
+    const h = (topic ? 2 : 1) * (size + 4 * u) + 12 * u;
+    const x = c.x - w / 2;
+    const y = c.y - h - 6 * u;
+    ctx.fillStyle = 'rgba(26, 20, 10, 0.88)';
+    roundRect(ctx, x, y, w, h, 9 * u);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(240, 160, 60, 0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.font = `700 ${size}px ui-sans-serif, system-ui, "Segoe UI", sans-serif`;
+    ctx.fillStyle = '#ffd99a';
+    ctx.fillText('📋 ' + head, c.x, y + 6 * u + size / 2 + 1);
+    if (topic) {
+      ctx.font = `500 ${size * 0.92}px ui-sans-serif, system-ui, "Segoe UI", sans-serif`;
+      ctx.fillStyle = '#f4ead8';
+      ctx.fillText(topic, c.x, y + 6 * u + size * 1.5 + 5 * u);
+    }
+    // time left
+    const p = clamp((now - meeting.startedAt) / (meeting.endsAt - meeting.startedAt), 0, 1);
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(x + 8 * u, y + h - 6 * u, w - 16 * u, 2.5 * u);
+    ctx.fillStyle = '#f0a03c';
+    ctx.fillRect(x + 8 * u, y + h - 6 * u, (w - 16 * u) * (1 - p), 2.5 * u);
   }
 
   _bubbleFor(agent, now) {

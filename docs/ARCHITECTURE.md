@@ -20,7 +20,7 @@ Because `core/` has no environment dependencies, **the server, the browser and t
 
 ## Event protocol
 
-Everything that changes the office is one of three event types. All fields are validated and clipped by `normalizeEvent` before they touch the state, whether they come from HTTP, a hook or the simulator.
+Everything that changes the office is one of four event types. All fields are validated and clipped by `normalizeEvent` before they touch the state, whether they come from HTTP, a hook or the simulator.
 
 ```jsonc
 // An agent changes what it is doing.
@@ -32,15 +32,20 @@ Everything that changes the office is one of three event types. All fields are v
 
 // A note for the activity log.
 { "type": "message", "agent": "backend", "text": "Waiting for the staging key" }
+
+// A kick-off meeting: the host stands at the whiteboard, the agents sit at the
+// meeting table, and after durationMs (4 s to 2 min) everyone returns to work.
+{ "type": "meeting", "host": "director", "agents": ["architect", "writer"],
+  "topic": "Launch plan", "durationMs": 20000 }
 ```
 
 | Field | Rules |
 |---|---|
-| `agent`, `from`, `to` | 1 to 64 characters: letters, digits, `. _ : @ -`. Unknown ids are added to a **Guests** department so events are never lost. |
+| `agent`, `from`, `to`, `host`, `agents[]` | 1 to 64 characters: letters, digits, `. _ : @ -`. An id that matches a roster id after slugging (`Writer` → `writer`) is that agent; other unknown ids are added to a **Guests** department so events are never lost. A meeting has at most 12 agents and one meeting runs at a time (a new one replaces it). |
 | `status` | `idle` `thinking` `typing` `reading` `running` `searching` `delegating` `waiting` `permission` `done` `error` `sleeping` |
 | `activity` | Free text, control characters removed, 140 characters max. |
 | `tool` | Optional tool name, 48 characters max. |
-| `ts` | Milliseconds since the epoch; defaults to now. |
+| `ts` | Milliseconds since the epoch; defaults to now, and values more than a day away from the clock are replaced by now. |
 
 **Status groups.** *Active* = thinking, typing, reading, running, searching, delegating. *Blocked* (needs a human) = waiting, permission. `done` fades to `idle` after 4 s, `error` after 8 s, and an active agent with no event for 120 s is considered idle again (`tick` in `model.js`). Blocked states never time out.
 
@@ -93,9 +98,12 @@ Invariants verified by `test/core.test.js`: one desk per agent, no overlapping f
 | File | Covers |
 |---|---|
 | `test/core.test.js` | model, roster, path finding, layout invariants |
-| `test/events.test.js` | hook mapping, hook installer, simulator |
+| `test/hierarchy.test.js` | org chart inference and warnings, org layout, breaks, meetings (model, hook, world, demo) |
+| `test/audit.test.js` | regressions from the code audit: unicode ids, head detection, wrapped and deep org charts, id matching, path finding speed |
+| `test/events.test.js` | hook mapping, hook installer (incl. groups shared with your own hooks), simulator |
 | `test/importer.test.js` | front matter parser, importer, CLI arguments |
-| `test/server.test.js` | HTTP, auth, limits, traversal, SSE, the real hook script end to end |
+| `test/server.test.js` | HTTP, auth, limits, traversal, Host checks, SSE, the real hook script end to end and what it sends |
+| `test/stamp.test.js` | cache-busting of the static demo |
 
 ```bash
 npm test

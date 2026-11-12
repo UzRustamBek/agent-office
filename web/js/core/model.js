@@ -2,6 +2,8 @@
 // Used by the server (to keep snapshots), the browser (to drive the office)
 // and the tests. It never touches the DOM or Node-only APIs.
 
+import { slug } from './roster.js';
+
 export const PROTOCOL_VERSION = 1;
 
 export const STATUS = Object.freeze({
@@ -37,7 +39,7 @@ export const BLOCKED = new Set([STATUS.WAITING, STATUS.PERMISSION]);
 export const isActive = (s) => ACTIVE.has(s);
 export const isBlocked = (s) => BLOCKED.has(s);
 
-export const EVENT_TYPES = Object.freeze(['status', 'delegate', 'message']);
+export const EVENT_TYPES = Object.freeze(['status', 'delegate', 'message', 'meeting']);
 
 export const LIMITS = Object.freeze({
   idLen: 64,
@@ -46,6 +48,9 @@ export const LIMITS = Object.freeze({
   textLen: 240,
   logSize: 400,
   historySize: 24,
+  meetingSize: 12,
+  meetingMinMs: 4000,
+  meetingMaxMs: 120000,
 });
 
 export const DEFAULT_TIMING = Object.freeze({
@@ -71,7 +76,8 @@ export function normalizeEvent(raw, now = Date.now()) {
   if (!raw || typeof raw !== 'object') return null;
   const type = raw.type ?? 'status';
   if (!EVENT_TYPES.includes(type)) return null;
-  const ts = Number.isFinite(raw.ts) ? raw.ts : now;
+  // timestamps from clients are trusted only within a day of our clock
+  const ts = Number.isFinite(raw.ts) && Math.abs(raw.ts - now) < 86_400_000 ? raw.ts : now;
 
   if (type === 'status') {
     if (!isValidAgentId(raw.agent)) return null;
@@ -89,6 +95,24 @@ export function normalizeEvent(raw, now = Date.now()) {
   if (type === 'delegate') {
     if (!isValidAgentId(raw.from) || !isValidAgentId(raw.to) || raw.from === raw.to) return null;
     return { v: PROTOCOL_VERSION, type, from: raw.from, to: raw.to, task: clip(raw.task, LIMITS.taskLen), ts };
+  }
+  if (type === 'meeting') {
+    // A short stand-up before the work is split: the host and its people meet
+    // at the meeting table, then everyone walks back to their desk.
+    if (!isValidAgentId(raw.host)) return null;
+    const list = Array.isArray(raw.agents) ? raw.agents : [];
+    const agents = [...new Set(list.filter((a) => isValidAgentId(a) && a !== raw.host))].slice(0, LIMITS.meetingSize);
+    if (!agents.length) return null;
+    const dur = Number.isFinite(raw.durationMs) ? raw.durationMs : 20000;
+    return {
+      v: PROTOCOL_VERSION,
+      type,
+      host: raw.host,
+      agents,
+      topic: clip(raw.topic, LIMITS.taskLen),
+      durationMs: Math.round(Math.min(LIMITS.meetingMaxMs, Math.max(LIMITS.meetingMinMs, dur))),
+      ts,
+    };
   }
   // message
   if (!isValidAgentId(raw.agent)) return null;
@@ -113,7 +137,7 @@ function blankAgent(id, now) {
 
 /** Create the live state for a normalized roster. */
 export function createState(roster, now = Date.now()) {
-  const state = { roster, agents: {}, log: [], seq: 0, startedAt: now };
+  const state = { roster, agents: {}, log: [], seq: 0, startedAt: now, meeting: null };
   for (const a of roster.agents) state.agents[a.id] = blankAgent(a.id, now);
   return state;
 }
@@ -185,6 +209,11 @@ function setStatus(state, agent, status, activity, tool, ts, now) {
 export function applyEvent(state, evt, now = Date.now()) {
   const out = { changed: [], rosterChanged: false, delegation: null };
   if (!evt) return out;
+  // "Writer" or "writer " from a script means the roster's "writer", not a new guest
+  const known = (id) => (state.agents[id] || !id ? id : state.agents[slug(id)] ? slug(id) : id);
+  evt = { ...evt };
+  for (const k of ['agent', 'from', 'to', 'host']) if (evt[k]) evt[k] = known(evt[k]);
+  if (evt.agents) evt.agents = evt.agents.map(known);
 
   if (evt.type === 'status') {
     out.rosterChanged = ensureAgent(state, evt.agent, now);
@@ -204,6 +233,15 @@ export function applyEvent(state, evt, now = Date.now()) {
     return out;
   }
 
+  if (evt.type === 'meeting') {
+    for (const id of [evt.host, ...evt.agents]) out.rosterChanged = ensureAgent(state, id, now) || out.rosterChanged;
+    const ended = state.meeting ? [state.meeting.host, ...state.meeting.agents] : [];
+    state.meeting = { host: evt.host, agents: evt.agents, topic: evt.topic, startedAt: now, endsAt: now + evt.durationMs };
+    pushLog(state, { kind: 'meeting', ts: evt.ts, agent: evt.host, count: evt.agents.length, activity: evt.topic });
+    out.changed.push(...new Set([...ended, evt.host, ...evt.agents]));
+    return out;
+  }
+
   if (evt.type === 'message') {
     out.rosterChanged = ensureAgent(state, evt.agent, now);
     pushLog(state, { kind: 'message', ts: evt.ts, agent: evt.agent, activity: evt.text });
@@ -218,6 +256,10 @@ export function applyEvent(state, evt, now = Date.now()) {
  */
 export function tick(state, now = Date.now(), timing = DEFAULT_TIMING) {
   const changed = [];
+  if (state.meeting && now >= state.meeting.endsAt) {
+    changed.push(state.meeting.host, ...state.meeting.agents);
+    state.meeting = null;
+  }
   for (const agent of Object.values(state.agents)) {
     const age = now - agent.since;
     let next = null;
@@ -251,6 +293,13 @@ export function summarize(state) {
   return sum;
 }
 
+/** Ids of everyone in the meeting that is running right now, or an empty list. */
+export function meetingMembers(state, now = Date.now()) {
+  const m = state.meeting;
+  if (!m || now >= m.endsAt) return [];
+  return [m.host, ...m.agents];
+}
+
 /** Serializable snapshot for new clients. */
 export function snapshot(state) {
   return {
@@ -259,6 +308,7 @@ export function snapshot(state) {
     agents: state.agents,
     log: state.log.slice(-120),
     startedAt: state.startedAt,
+    meeting: state.meeting,
   };
 }
 
@@ -270,5 +320,6 @@ export function restore(snap) {
     log: snap.log || [],
     seq: (snap.log && snap.log.length ? snap.log[snap.log.length - 1].seq : 0) || 0,
     startedAt: snap.startedAt || Date.now(),
+    meeting: snap.meeting && Number.isFinite(snap.meeting.endsAt) ? snap.meeting : null,
   };
 }

@@ -12,7 +12,8 @@ const MIN_INTERIOR_W = 24;
 const TARGET_ASPECT = 1.9;
 const MIN_ZONE_COLS = 3; // keeps small departments from looking cramped
 const MAX_ZONE_COLS = 6;
-const CORRIDOR = 2; // rows between the top (command) zone and the departments
+const CORRIDOR = 2;
+const MAX_LEVEL_ROWS = 4; // reporting levels shown as separate rows inside a department // rows between the top (command) zone and the departments
 const SINGLE_ROW_MAX = 68; // departments share one row while they fit in this many tiles
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -29,8 +30,12 @@ export function zoneGrid(n) {
  * and every level becomes its own row of desks, so the zone reads like an org chart.
  */
 export function zoneShape(agents) {
-  const levels = [...new Set(agents.map((a) => a.level || 0))].sort((a, b) => a - b);
-  const groups = levels.map((lv) => agents.filter((a) => (a.level || 0) === lv));
+  // very deep chains would make a zone extremely tall: from the 4th level down
+  // everybody shares the last row group
+  const top = Math.min(...agents.map((a) => a.level || 0));
+  const band = (a) => Math.min(a.level || 0, top + MAX_LEVEL_ROWS - 1);
+  const levels = [...new Set(agents.map(band))].sort((a, b) => a - b);
+  const groups = levels.map((lv) => agents.filter((a) => band(a) === lv));
   const widest = Math.max(...groups.map((g) => g.length));
   const cols = clamp(Math.max(zoneGrid(agents.length).cols, MIN_ZONE_COLS, Math.min(widest, MAX_ZONE_COLS)), 1, MAX_ZONE_COLS);
   const rows = [];
@@ -191,14 +196,27 @@ export function buildLayout(roster) {
   for (const a of roster.agents) {
     const d = desks[a.id];
     const m = a.reportsTo ? desks[a.reportsTo] : null;
-    if (!d || !m || m.zone !== d.zone || d.seat.y - m.seat.y !== 3) continue;
+    if (!d || !m || m.zone !== d.zone || d.seat.y - m.seat.y < 3) continue;
+    const zone = placedZones.find((z) => z.id === d.zone);
     const mx = m.seat.x + 1;
     const cx = d.seat.x + 1;
     const mid = m.seat.y + 2.5;
-    const color = placedZones.find((z) => z.id === d.zone)?.color;
-    orgLines.push({ x1: mx, y1: m.seat.y + 2, x2: mx, y2: mid, kind: 'tree', color });
-    if (mx !== cx) orgLines.push({ x1: Math.min(mx, cx), y1: mid, x2: Math.max(mx, cx), y2: mid, kind: 'tree', color });
-    orgLines.push({ x1: cx, y1: mid, x2: cx, y2: d.seat.y - 0.25, kind: 'tree', color });
+    const color = zone?.color;
+    const seg = (x1, y1, x2, y2) => orgLines.push({ x1: Math.min(x1, x2), y1: Math.min(y1, y2), x2: Math.max(x1, x2), y2: Math.max(y1, y2), kind: 'tree', color });
+    seg(mx, m.seat.y + 2, mx, mid);
+    if (d.seat.y - m.seat.y === 3) {
+      if (mx !== cx) seg(mx, mid, cx, mid);
+      seg(cx, mid, cx, d.seat.y - 0.25);
+    } else {
+      // the report sits further down (a wrapped row): follow the free lane along
+      // the zone's left edge instead of crossing the desks in between
+      const lane = zone.x + 0.5;
+      const low = d.seat.y - 0.5;
+      seg(lane, mid, mx, mid);
+      seg(lane, mid, lane, low);
+      seg(lane, low, cx, low);
+      seg(cx, low, cx, d.seat.y - 0.25);
+    }
   }
 
   // lounge band -----------------------------------------------------------
@@ -288,6 +306,18 @@ export function buildLayout(roster) {
   const clockX = Math.floor(width / 2);
   decor.push({ type: 'clock', x: clockX, y: 0, w: 1, h: 1 });
 
+  // meeting: the host stands at the whiteboard, everyone else takes a chair.
+  // Offices too narrow for a meeting room use the lounge instead.
+  const room = bands.find((b) => b.id === 'meeting') || bands.find((b) => b.id === 'lounge') || bands[0] || null;
+  const group = room?.id === 'meeting' ? 'meeting' : 'lounge';
+  const meeting = room
+    ? {
+        room: { x: room.x, y: room.y, w: room.w, h: LOUNGE_ROWS },
+        host: spots.find((sp) => sp.kind === 'board') || null,
+        seats: spots.filter((sp) => sp.group === group && sp.kind !== 'board'),
+      }
+    : null;
+
   const isWalkable = (x, y) => x >= 0 && y >= 0 && x < width && y < height && !blocked[y * width + x];
 
   return {
@@ -297,6 +327,7 @@ export function buildLayout(roster) {
     pxH: height * TILE,
     zones: placedZones,
     orgLines,
+    meeting,
     bands,
     desks,
     furniture,

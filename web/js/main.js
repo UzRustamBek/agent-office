@@ -29,13 +29,31 @@ const app = {
   getState: () => app.state,
 };
 
-// URL parameters override saved settings (handy for links and screenshots).
-for (const [key, field] of [['lang', 'lang'], ['theme', 'theme'], ['names', 'names'], ['lighting', 'lighting']]) {
-  if (params.has(key)) app.settings[field] = params.get(key);
+// URL parameters override saved settings for this visit only (handy for links
+// and screenshots): unknown values are ignored and overrides are never saved.
+const saved = { ...app.settings };
+const urlKeys = new Set();
+const ALLOWED = {
+  lang: ['en', 'uz', 'ru'],
+  theme: ['auto', 'dark', 'light'],
+  names: ['always', 'hover', 'off'],
+  lighting: ['auto', 'day', 'night'],
+  breaks: ['off', 'rare', 'normal'],
+};
+for (const [key, values] of Object.entries(ALLOWED)) {
+  if (params.has(key) && values.includes(params.get(key))) {
+    app.settings[key] = params.get(key);
+    urlKeys.add(key);
+  }
 }
-if (params.has('speed')) app.settings.speed = Math.max(0.25, Math.min(8, Number(params.get('speed')) || 1));
-if (params.has('breaks') && ['off', 'rare', 'normal'].includes(params.get('breaks'))) app.settings.breaks = params.get('breaks');
-if (params.has('motion')) app.settings.reduceMotion = params.get('motion') === 'reduced';
+if (params.has('speed')) {
+  app.settings.speed = Math.max(0.25, Math.min(8, Number(params.get('speed')) || 1));
+  urlKeys.add('speed');
+}
+if (params.has('motion')) {
+  app.settings.reduceMotion = params.get('motion') === 'reduced';
+  urlKeys.add('reduceMotion');
+}
 
 const canvas = document.getElementById('office');
 const stage = document.getElementById('stage');
@@ -43,6 +61,8 @@ const stage = document.getElementById('stage');
 app.renderer = new OfficeRenderer(canvas, {
   getAgent: (id) => app.state?.agents[id],
   getSettings: () => app.settings,
+  getMeeting: () => (app.state?.meeting && Date.now() < app.state.meeting.endsAt ? app.state.meeting : null),
+  t: (key, vars) => (app.ui ? app.ui.t(key, vars) : key),
   onPick: (id) => app.actions.selectAgent(id),
   onHover: (id, e) => app.ui?.showTooltip(id, e || { clientX: 0, clientY: 0 }),
 });
@@ -94,7 +114,10 @@ app.actions = {
 app.updateSettings = (patch) => {
   const before = { ...app.settings };
   Object.assign(app.settings, patch);
-  saveSettings(app.settings);
+  for (const k of Object.keys(patch)) urlKeys.delete(k); // chosen by hand: keep it
+  const toSave = { ...app.settings };
+  for (const k of urlKeys) toSave[k] = saved[k];
+  saveSettings(toSave);
   if ('lang' in patch && patch.lang !== before.lang) {
     app.ui.applyI18n();
     if (document.getElementById('settings').open) app.ui.buildSettings();
@@ -138,14 +161,25 @@ async function fetchExampleRoster() {
 function rebuild({ keepView = false } = {}) {
   const roster = app.state.roster;
   app.layout = buildLayout(roster);
-  app.world = new World(roster, app.layout, { seed: 11, reduceMotion: app.settings.reduceMotion, breaks: app.settings.breaks });
+  // keep the same world on roster updates, so characters do not pop in again
+  if (app.world && keepView) app.world.setLayout(roster, app.layout);
+  else app.world = new World(roster, app.layout, { seed: 11, reduceMotion: app.settings.reduceMotion, breaks: app.settings.breaks });
   app.renderer.setWorld(app.world, app.layout, roster, { keepView });
-  app.rosterJson = JSON.stringify(roster);
+  const rosterJson = JSON.stringify(roster);
+  if (roster.warnings?.length && rosterJson !== app.rosterJson) {
+    for (const w of roster.warnings) console.warn('[agent-office]', w);
+    app.ui.toast(app.ui.t('roster.warnings', { n: roster.warnings.length }), 'info', 7000);
+  }
+  app.rosterJson = rosterJson;
   app.ui.setTitle(roster);
   app.ui.buildRoster();
-  app.ui.resetLog();
-  app.lastSeq = 0;
+  // a roster update keeps the activity log; a fresh start shows the last entries
+  if (!keepView || app.state.log.every((e) => e.seq > app.lastSeq)) {
+    app.ui.resetLog();
+    app.lastSeq = 0;
+  }
   for (const entry of app.state.log.slice(-12)) {
+    if (entry.seq <= app.lastSeq) continue;
     app.ui.addLog(entry);
     app.lastSeq = entry.seq;
   }
@@ -245,7 +279,7 @@ function frame() {
   last = now;
   if (app.world && app.state && !document.hidden) {
     app.sim?.tick(now);
-    app.world.update(dt, now, (id) => app.state.agents[id]?.status ?? STATUS.IDLE);
+    app.world.update(dt, now, (id) => app.state.agents[id]?.status ?? STATUS.IDLE, app.state.meeting);
     app.renderer.render(now);
   }
   requestAnimationFrame(frame);
@@ -339,7 +373,7 @@ async function boot() {
       roster = await fetchExampleRoster();
     } catch (err) {
       app.ui.setConn('offline');
-      app.ui.toast(`Could not load the example roster: ${err.message}`, 'error', 10000);
+      app.ui.toast(app.ui.t('boot.failed', { error: err.message }), 'error', 10000);
       return;
     }
   }

@@ -29,6 +29,7 @@ A list of agents tells you *who exists*. A glance at an office tells you *who is
 - **See state at a glance.** Typing, reading, searching, running a command, thinking, delegating, waiting for you, needs approval, finished, error. Each has its own pose, screen, color and speech bubble.
 - **See teamwork.** When one agent hands a task to another, a little envelope flies across the office, along the reporting lines of your organization.
 - **See who answers to whom.** The chief sits at the top, departments hang below, and every reporting level gets its own row of desks.
+- **Watch the kick-off.** Give the main agent a task in Claude Code and it first calls its people to the meeting table, splits the work on the whiteboard, then everyone walks back to their desk.
 - **Know when to step in.** The "Needs you" counter pulses, the character raises a hand, and an optional chime plays.
 - **It is yours.** Departments, names, roles, looks and tools come from a plain JSON file, or are imported straight from your Claude Code agent folders.
 
@@ -122,6 +123,7 @@ or `POST /api/events` with the bearer token printed in `~/.agent-office/servers/
 | **Office** | Departments become carpeted zones with a desk per agent, plus a lounge, pantry and meeting room. The layout is generated from your roster (1 to 120 agents). |
 | **Hierarchy** | An org chart you can walk through: chief on top, then department heads, then the people who do the work, joined by reporting lines. Gold and steel nameplates mark chiefs and managers. See [Hierarchy](docs/AGENTS-FORMAT.md#hierarchy). |
 | **Characters** | Drawn in code (no image files). Six skin tones, eight hairstyles, accessories, team-colored shirts, walk cycles in four directions, and a pose for every state. |
+| **Meetings** | A new task starts with a kick-off meeting: the host at the whiteboard, the team around the table, sticky notes filling the agenda, task cards dealt out, a speaker bubble going round and a countdown banner. Then the tasks fly out as envelopes. |
 | **Life** | Working agents stay at their desks. Idle ones may stroll to the coffee machine or sofa (rarely by default; the *Breaks* setting makes it never or often) and walk back when work arrives. |
 | **Screens** | Each monitor shows what its agent is doing: scrolling code, a terminal, a document, search results, a delegation graph, a "?" or "!" alert. |
 | **Roster panel** | Search, filter (active / needs you / idle), department groups, live activity text. |
@@ -141,14 +143,17 @@ Settings (gear icon): theme, language, name tags, lighting, **breaks**, reduced 
     <td width="50%"><img src="docs/assets/night-details.jpg" alt="Night lighting with glowing monitors and the agent details drawer"><br/><sub><b>Night mode</b>: monitors glow, click an agent for its drawer: tools, skills, counters, history.</sub></td>
     <td width="50%"><img src="docs/assets/light-uz.jpg" alt="Light theme with the Uzbek interface"><br/><sub><b>Light theme, Oʻzbekcha UI</b>: the same office, English / Uzbek / Russian.</sub></td>
   </tr>
+  <tr>
+    <td colspan="2"><img src="docs/assets/meeting.jpg" alt="A kick-off meeting: the host at the whiteboard, the team at the meeting table" width="100%"><br/><sub><b>Kick-off meeting</b>: a new task first gathers the team at the table; the agenda fills up, task cards are dealt, then everyone goes back to work.</sub></td>
+  </tr>
 </table>
 
 ## Privacy and security
 
 - **Local only.** The server binds to `127.0.0.1` by default. Nothing is sent anywhere.
-- **Small hook payloads.** The hook forwards only tool name, a file *basename*, a short command description and ids. File contents, tool results, transcript paths and full paths never leave Claude Code.
+- **Small hook payloads.** The hook itself cuts every payload down to the tool name, a file *name* (no folder), the program of a command (no arguments), short descriptions and ids. File contents, tool results, URLs, transcript paths and prompts never leave Claude Code (prompts only with `AGENT_OFFICE_SHARE_PROMPTS=1`).
 - **Prompts are hidden** unless you start the server with `--share-prompts`.
-- **Writes need a token.** `POST` endpoints require a random bearer token, `application/json`, a size limit and a `Host` check against DNS rebinding. The page itself ships a strict Content-Security-Policy and never writes HTML strings.
+- **Writes need a token.** `POST` endpoints require a random bearer token, `application/json`, a size limit and a `Host` check against DNS rebinding. The page carries a strict Content-Security-Policy (header from the server, meta tag in the static demo) and never writes HTML strings.
 - **Hooks change only what you approve.** `hooks install` is a dry run until you add `--write`, backs up your settings first, and `uninstall` removes only its own entries.
 
 See [SECURITY.md](SECURITY.md).
@@ -156,7 +161,7 @@ See [SECURITY.md](SECURITY.md).
 ## CLI
 
 ```text
-agent-office start     [--agents file] [--port n] [--host addr] [--demo] [--demo-speed n] [--share-prompts] [--open]
+agent-office start     [--agents file] [--port n] [--host addr] [--allow-host names] [--demo] [--demo-speed n] [--meeting seconds] [--share-prompts] [--open]
 agent-office import    [dir...] [--out file] [--main name] [--title text] [--dry-run]
 agent-office hooks     print | install | uninstall | status  [--scope user|project|local] [--all] [--agent id] [--write]
 agent-office emit      --agent id --status <status> [--activity text] | --delegate from:to [--task text]
@@ -185,7 +190,7 @@ bin/        CLI entry point
 server/     HTTP + SSE server, hook mapping, importer, hook installer
 hook/       the tiny Claude Code hook script
 web/        the app: core/ (pure logic), office/ (art + world), ui/, sim/
-test/       node:test suites (core, layout, server, hooks, importer, simulator)
+test/       node:test suites (core, hierarchy, meetings, audit regressions, server, hooks, importer, stamp)
 docs/       architecture, hooks, roster format, customizing
 ```
 

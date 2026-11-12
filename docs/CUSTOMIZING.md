@@ -6,9 +6,9 @@ Edit the roster ([AGENTS-FORMAT.md](AGENTS-FORMAT.md)). Looks, colors, departmen
 
 ## Settings in the app
 
-Open the gear icon: language, theme, name tags (always / on hover / selected only), office lighting (follow local time / day / night), speech bubbles, reduced motion, sound alerts and (in demo mode) simulation speed. They are stored in the browser.
+Open the gear icon: language, theme, name tags (always / on hover / selected only), office lighting (follow local time / day / night), breaks (never / rarely / often), speech bubbles, reduced motion, sound alerts and (in demo mode) simulation speed. They are stored in the browser.
 
-URL parameters override them, which is handy for sharing a link or taking screenshots:
+URL parameters override them for that visit only (they are not saved, and unknown values are ignored), which is handy for sharing a link or taking screenshots:
 
 | Parameter | Example | Effect |
 |---|---|---|
@@ -17,6 +17,7 @@ URL parameters override them, which is handy for sharing a link or taking screen
 | `theme` | `?theme=light` | `auto`, `dark`, `light` |
 | `lighting` | `?lighting=night` | `auto`, `day`, `night` |
 | `names` | `?names=hover` | `always`, `hover`, `off` |
+| `breaks` | `?breaks=off` | `off`, `rare` (default), `normal` |
 | `speed` | `?speed=2` | demo speed, 0.25 to 8 |
 | `seed` | `?seed=21` | reproducible demo |
 | `motion` | `?motion=reduced` | calmer animation |
@@ -38,11 +39,12 @@ Run `npm test` after changing the layout: the tests verify that nothing overlaps
 
 ## Behaviour
 
-* How long agents rest, how long a break lasts and how fast they walk: the constants at the top of `web/js/office/world.js`
+* How often agents take a break, how long it lasts, how many may be away at once and how fast they walk: `BREAKS`, `SPEED` and `HURRY` at the top of `web/js/office/world.js`
+* Kick-off meetings: `agent-office start --meeting <seconds>` (`0` turns them off); the demo's meetings are in `web/js/sim/demo.js`
 * Status timeouts (`done`, `error`, stale): `DEFAULT_TIMING` in `web/js/core/model.js`
 * How hook events map to statuses: `server/events.js`
 * What the demo does: `web/js/sim/demo.js`
 
 ## Embedding
 
-`web/` is a static site. Serve it from any web server; without `/api/state` it runs the demo, and with a reverse proxy to a running Agent Office server it shows live data. For your own hosting, copy `agents.example.json` (or your roster) next to `index.html`.
+`web/` is a static site. Serve it from any web server; without `/api/state` it runs the demo, and with a reverse proxy to a running Agent Office server it shows live data (start the server with `--allow-host your.proxy.name`, otherwise its DNS-rebinding check refuses the proxied `Host`). For your own hosting, copy `agents.example.json` (or your roster) next to `index.html`.

@@ -63,20 +63,28 @@ export function findPath(grid, start, goal) {
   if (!inside(start.x, start.y) || !inside(goal.x, goal.y)) return null;
   if (start.x === goal.x && start.y === goal.y) return [];
 
+  // A* over (tile, arriving direction). The Manhattan distance never
+  // overestimates (every step costs at least 1), so paths stay optimal.
+  // Buffers are reused between calls: the visit stamp marks which entries are
+  // valid for this search instead of clearing them.
   const size = w * h * 5;
-  const dist = new Float64Array(size).fill(Infinity);
-  const prev = new Int32Array(size).fill(-1);
+  const buf = buffers(size);
+  const stamp = ++buf.round;
+  const { dist, prev, seen } = buf;
   const idx = (x, y, d) => (y * w + x) * 5 + d;
+  const hscore = (x, y) => Math.abs(x - goal.x) + Math.abs(y - goal.y);
+  const get = (i) => (seen[i] === stamp ? dist[i] : Infinity);
 
   const heap = new MinHeap();
   const s = idx(start.x, start.y, 4);
+  seen[s] = stamp;
   dist[s] = 0;
-  heap.push(0, s);
+  prev[s] = -1;
+  heap.push(hscore(start.x, start.y), s);
 
   let end = -1;
   while (heap.size) {
-    const [cost, cur] = heap.pop();
-    if (cost > dist[cur]) continue;
+    const [, cur] = heap.pop();
     const d = cur % 5;
     const cell = (cur - d) / 5;
     const x = cell % w;
@@ -85,6 +93,7 @@ export function findPath(grid, start, goal) {
       end = cur;
       break;
     }
+    const cost = dist[cur];
     for (let nd = 0; nd < 4; nd++) {
       const nx = x + DIRS[nd][0];
       const ny = y + DIRS[nd][1];
@@ -94,10 +103,11 @@ export function findPath(grid, start, goal) {
       const step = 1 + (d !== 4 && d !== nd ? TURN_PENALTY : 0);
       const ni = idx(nx, ny, nd);
       const nc = cost + step;
-      if (nc < dist[ni]) {
+      if (nc < get(ni)) {
+        seen[ni] = stamp;
         dist[ni] = nc;
         prev[ni] = cur;
-        heap.push(nc, ni);
+        heap.push(nc + hscore(nx, ny), ni);
       }
     }
   }
@@ -109,6 +119,14 @@ export function findPath(grid, start, goal) {
     path.push({ x: cell % w, y: Math.floor(cell / w) });
   }
   return path.reverse();
+}
+
+let shared = null;
+function buffers(size) {
+  if (!shared || shared.size < size || shared.round > 2e9) {
+    shared = { size, round: 0, dist: new Float64Array(size), prev: new Int32Array(size), seen: new Uint32Array(size) };
+  }
+  return shared;
 }
 
 /** Flood fill reachability from a tile (used by tests and layout sanity checks). */

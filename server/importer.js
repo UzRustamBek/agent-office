@@ -104,12 +104,17 @@ export function importAgents(dirs, opts = {}) {
       const boss = data.reports_to ?? data.reportsTo;
       if (typeof boss === 'string') agent.reportsTo = boss.trim() ? slug(boss) : null;
       if (data.lead === true || data.lead === 'true') agent.lead = true;
-      found.set(agent.id, agent); // later folders (project) override earlier (user)
+      const clash = found.get(agent.id);
+      if (clash && clash.root === root) {
+        skipped.push({ file, reason: `same name as ${clash.file}` });
+        continue;
+      }
+      found.set(agent.id, { ...agent, root, file }); // later folders (project) override earlier (user)
       files.push(file);
     }
   }
 
-  const agents = [...found.values()];
+  const agents = [...found.values()].map(({ root: _r, file: _f, ...a }) => a);
   const wanted = opts.mainAgent ? slug(opts.mainAgent) : agents.map((a) => a.id).find((id) => MAIN_HINTS.includes(id));
   const roster = normalizeRoster({
     office: {

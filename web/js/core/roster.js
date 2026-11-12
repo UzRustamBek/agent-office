@@ -47,14 +47,14 @@ export class RosterError extends Error {
   }
 }
 
-/** URL/ID friendly slug. Keeps Latin and Cyrillic letters. */
+/** URL/ID friendly slug. Keeps letters and digits of every script (Latin, Cyrillic, CJK, Arabic, ...). */
 export function slug(input) {
   const s = String(input ?? '')
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[ʻʼ'’`]/g, '')
-    .replace(/[^a-z0-9Ѐ-ӿ]+/g, '-')
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
   return s || 'agent';
@@ -142,9 +142,17 @@ const strList = (v, max = 24, itemMax = 48) =>
 // Hierarchy: who reports to whom
 // ---------------------------------------------------------------------------
 
-export const TIERS = ['chief', 'manager', 'doer'];
 
-const HEAD_RE = /(^|[^a-z])(head|lead|chief|director|manager)([^a-z]|$)|direktor|boshliq|rahbar|timlid|(^|[^a-z])(cto|cfo|coo|cmo|ceo)([^a-z]|$)/i;
+// Titles that make someone the head of a department, strongest first. "Lead"
+// counts only as "team/tech lead", so "Lead generation" is not a manager, and
+// assistants and deputies never lead.
+const STRONG_TITLE = /(^|[^a-z])(head|chief|director|cto|cfo|coo|cmo|ceo)([^a-z]|$)|direktor|boshliq|rahbar|timlid|руководител|директор|начальник/i;
+const WEAK_TITLE = /(^|[^a-z])((team|tech|group)\s+lead|lead|manager)([^a-z]|$)|menejer|менеджер/i;
+const NOT_HEAD = /assistant|deputy|intern|yordamchi|o.rinbosar|помощник|ассистент|заместител|lead\s+gen/i;
+function titleScore(text) {
+  if (!text || NOT_HEAD.test(text)) return 0;
+  return STRONG_TITLE.test(text) ? 2 : WEAK_TITLE.test(text) ? 1 : 0;
+}
 const NO_MANAGER = new Set(['', 'none', 'null', 'top', 'nobody', 'root']);
 
 /**
@@ -159,7 +167,7 @@ const NO_MANAGER = new Set(['', 'none', 'null', 'top', 'nobody', 'root']);
  *
  * tier: chief = top of the tree, manager = has people reporting to them, doer = the rest.
  */
-function resolveHierarchy(agents, hints, mainId, issues) {
+function resolveHierarchy(agents, hints, mainId, warnings) {
   const byId = new Map(agents.map((a) => [a.id, a]));
   const byName = new Map(agents.map((a) => [slug(a.name), a]));
   const main = byId.get(mainId);
@@ -174,40 +182,50 @@ function resolveHierarchy(agents, hints, mainId, issues) {
       continue;
     }
     const flagged = members.find((a) => hints.get(a.id)?.lead);
-    const named = flagged || members.find((a) => HEAD_RE.test(a.role)) || members.find((a) => HEAD_RE.test(a.name));
+    let best = null;
+    let bestScore = 0;
+    for (const a of members) {
+      const score = Math.max(titleScore(a.role), titleScore(a.name));
+      if (score > bestScore) {
+        best = a;
+        bestScore = score;
+      }
+    }
+    const named = flagged || best;
     if (named) headOf.set(dept, named.id);
   }
 
+  const inferred = (a) => {
+    if (a.id === mainId) return null;
+    const head = headOf.get(a.department);
+    if (head && head !== a.id) return head;
+    return mainId && mainId !== a.id ? mainId : null;
+  };
   for (const a of agents) {
     const hint = hints.get(a.id);
-    let parent = null;
+    let parent = inferred(a);
     if (hint?.explicit) {
       const v = hint.reportsTo;
       if (v === null || v === undefined || NO_MANAGER.has(String(v).trim().toLowerCase())) {
         parent = null;
       } else {
         const target = byId.get(slug(v)) || byName.get(slug(v));
-        if (!target) issues.push(`agent "${a.id}": reportsTo "${v}" is not an agent in this roster`);
-        else if (target.id === a.id) issues.push(`agent "${a.id}": cannot report to itself`);
+        if (!target) warnings.push(`agent "${a.id}": reportsTo "${v}" is not an agent in this roster (placed automatically)`);
+        else if (target.id === a.id) warnings.push(`agent "${a.id}": cannot report to itself (placed automatically)`);
         else parent = target.id;
       }
-    } else if (a.id === mainId) {
-      parent = null;
-    } else {
-      const head = headOf.get(a.department);
-      if (head && head !== a.id) parent = head;
-      else if (mainId && mainId !== a.id) parent = mainId;
     }
     a.reportsTo = parent;
   }
 
-  // cycles
+  // cycles: the agent where a loop is found becomes a top-level agent
   for (const a of agents) {
     const seen = new Set([a.id]);
     for (let cur = byId.get(a.reportsTo); cur; cur = byId.get(cur.reportsTo)) {
       if (seen.has(cur.id)) {
-        issues.push(`reporting cycle: "${a.id}" is (indirectly) its own manager`);
-        return;
+        warnings.push(`reporting cycle through "${a.id}": it is shown at the top instead`);
+        a.reportsTo = null;
+        break;
       }
       seen.add(cur.id);
     }
@@ -242,7 +260,8 @@ export function normalizeRoster(input) {
   const addDepartment = (id, name, color) => {
     if (deptIndex.has(id)) return deptIndex.get(id);
     if (departments.length >= MAX_DEPARTMENTS) {
-      issues.push(`too many departments; the limit is ${MAX_DEPARTMENTS}`);
+      const msg = `too many departments; the limit is ${MAX_DEPARTMENTS}`;
+      if (!issues.includes(msg)) issues.push(msg);
       return deptIndex.get('general') || departments[0];
     }
     const dept = {
@@ -300,7 +319,8 @@ export function normalizeRoster(input) {
   const office = input.office && typeof input.office === 'object' ? input.office : {};
   const wantedMain = slug(office.mainAgent || '');
   const mainAgent = agents.some((a) => a.id === wantedMain) ? wantedMain : agents[0]?.id || '';
-  resolveHierarchy(agents, hints, mainAgent, issues);
+  const warnings = [];
+  resolveHierarchy(agents, hints, mainAgent, warnings);
 
   if (issues.length) throw new RosterError(issues);
 
@@ -310,6 +330,9 @@ export function normalizeRoster(input) {
       subtitle: str(office.subtitle, 120),
       mainAgent,
     },
+    // problems that do not stop the office (for example a reportsTo typo): the
+    // agent is placed as if the field were missing and the reason is listed here
+    warnings,
     departments: departments.filter((d) => agents.some((a) => a.department === d.id)),
     agents,
   };

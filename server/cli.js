@@ -44,6 +44,8 @@ ${c.bold('start')}
   --host <addr>         Bind address (default 127.0.0.1; only change this on a trusted network)
   --demo                Simulate agents working so you can see the office alive
   --demo-speed <n>      Demo speed multiplier (default 1)
+  --meeting <seconds>   Kick-off meeting when you give the main agent a task (default 20, 0 = off)
+  --allow-host <names>  Extra Host names to accept, comma separated (e.g. a reverse proxy name)
   --share-prompts       Show task text from prompts in the activity label (off by default)
   --open                Open the browser
 
@@ -129,6 +131,8 @@ async function cmdStart(argv) {
     demo: Boolean(flags.demo),
     demoSpeed: flags['demo-speed'] ? Number(flags['demo-speed']) || 1 : 1,
     sharePrompts: Boolean(flags['share-prompts']),
+    allowHosts: typeof flags['allow-host'] === 'string' ? flags['allow-host'].split(',').map((h) => h.trim()).filter(Boolean) : [],
+    meetingMs: flags.meeting === undefined ? 20000 : Math.max(0, Number(flags.meeting) || 0) * 1000,
   });
   let info;
   try {
@@ -140,6 +144,7 @@ async function cmdStart(argv) {
   console.log('');
   console.log(`  ${c.bold('Agent Office')} ${c.dim(VERSION)}`);
   console.log(`  ${c.green('●')} ${c.bold(info.url)}`);
+  for (const w of roster.warnings || []) console.log(`  ${c.yellow('!')} ${w}`);
   console.log(`  ${c.dim('roster')}   ${picked.source === 'example' ? 'bundled example (run `agent-office import` to use your own)' : path.relative(process.cwd(), picked.file) || picked.file}  ${c.dim(`(${roster.agents.length} agents, ${roster.departments.length} departments)`)}`);
   console.log(`  ${c.dim('mode')}     ${flags.demo ? 'demo simulation' : 'live: waiting for hook events'}`);
   if (!flags.demo) console.log(`  ${c.dim('connect')}  agent-office hooks install --scope user --write`);
@@ -325,7 +330,7 @@ async function cmdDoctor() {
     const picked = resolveRosterFile();
     const roster = loadRosterFile(picked.file);
     ok(`roster: ${picked.source === 'example' ? 'bundled example' : picked.file} (${roster.agents.length} agents, ${roster.departments.length} departments)`);
-    if (!roster.office.mainAgent) warn('no main agent set; delegation from hooks falls back to the first agent');
+    for (const w of roster.warnings || []) warn(`roster: ${w}`);
   } catch (err) {
     no(`roster: ${err.message.split('\n')[0]}`);
   }

@@ -32,6 +32,23 @@ export function drawAvatar(canvas, look, scale) {
   drawCharacter(ctx, look, { x: 8, y: 26, dir: 'down', shadow: false });
 }
 
+/**
+ * Department members in org-chart order: every manager directly followed by
+ * their own people, so two teams never interleave.
+ */
+export function treeOrder(members) {
+  const ids = new Set(members.map((a) => a.id));
+  const byId = new Map(members.map((a) => [a.id, a]));
+  const roots = members.filter((a) => !a.reportsTo || !ids.has(a.reportsTo)).sort((a, b) => (a.level || 0) - (b.level || 0));
+  const out = [];
+  const visit = (a) => {
+    out.push(a);
+    for (const id of a.team || []) if (byId.has(id)) visit(byId.get(id));
+  };
+  roots.forEach(visit);
+  return out.length === members.length ? out : members;
+}
+
 export function fmtDuration(ms) {
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
@@ -147,7 +164,6 @@ export class UI {
       const f = e.dataTransfer?.files?.[0];
       if (f) this.app.actions.loadRosterFile(f);
     });
-    stage.addEventListener('keydown', () => {});
   }
 
   /** Keep the office clear of the activity log when it is open. */
@@ -164,6 +180,7 @@ export class UI {
     document.documentElement.lang = this.app.settings.lang;
     for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = this.t(el.dataset.i18n);
     for (const el of document.querySelectorAll('[data-i18n-title]')) el.title = this.t(el.dataset.i18nTitle);
+    for (const el of document.querySelectorAll('[data-i18n-aria]')) el.setAttribute('aria-label', this.t(el.dataset.i18nAria));
     for (const el of document.querySelectorAll('[data-i18n-placeholder]')) el.placeholder = this.t(el.dataset.i18nPlaceholder);
     this.buildLegend();
     this.setConn(this.connMode || 'connecting');
@@ -219,9 +236,9 @@ export class UI {
     this.groups.clear();
     const frag = document.createDocumentFragment();
     for (const dept of roster.departments) {
-      const members = roster.agents.filter((a) => a.department === dept.id).sort((a, b) => (a.level || 0) - (b.level || 0));
+      const members = treeOrder(roster.agents.filter((a) => a.department === dept.id));
       if (!members.length) continue;
-      const base = members[0].level || 0;
+      const base = Math.min(...members.map((a) => a.level || 0));
       const count = h('span', { class: 'count' });
       const group = h(
         'details',
@@ -277,9 +294,12 @@ export class UI {
     row.state.style.setProperty('--st', color);
     row.state.dataset.live = String(ACTIVE.has(a.status) || BLOCKED.has(a.status));
     row.state.dataset.attn = String(BLOCKED.has(a.status));
-    row.label.textContent = this.statusLabel(a.status);
+    const m = this.state.meeting;
+    const inMeeting = Boolean(m && Date.now() < m.endsAt && (m.host === id || m.agents.includes(id)));
+    row.label.textContent = inMeeting && a.status === STATUS.IDLE ? this.t('meeting.in') : this.statusLabel(a.status);
+    row.state.dataset.meeting = String(inMeeting);
     const showActivity = a.status !== STATUS.IDLE && a.activity;
-    row.sub.textContent = showActivity ? a.activity : row.agent.role || '';
+    row.sub.textContent = showActivity ? a.activity : inMeeting ? `📋 ${this.t('meeting.in')}` : row.agent.role || '';
     row.sub.classList.toggle('live', Boolean(showActivity));
     row.el.classList.toggle('is-selected', id === this.selectedId);
     this._updateGroupCount(row.agent.department);
@@ -479,6 +499,9 @@ export class UI {
       const to = this.agentInfo(entry.to)?.name || entry.to;
       what = `${this.t('log.delegate', { from: name, to })}${entry.activity ? `: ${entry.activity}` : ''}`;
       color = STATUS_COLOR.delegating;
+    } else if (entry.kind === 'meeting') {
+      what = `${this.t('log.meeting', { n: entry.count || 0 })}${entry.activity ? `: ${entry.activity}` : ''}`;
+      color = '#f0a03c';
     } else if (entry.kind === 'message') {
       what = entry.activity;
       color = STATUS_COLOR.waiting;
@@ -506,7 +529,11 @@ export class UI {
     const select = (key, options, labelKey) =>
       h('select', { onchange: (e) => this.app.updateSettings({ [key]: e.target.value }) }, options.map(([v, l]) => h('option', { value: v, selected: s[key] === v, text: l })));
     const toggle = (key) => h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: Boolean(s[key]), onchange: (e) => this.app.updateSettings({ [key]: e.target.checked }) }), h('span'));
-    const field = (title, control, hint) => h('div', { class: 'field' }, h('label', {}, title, hint ? h('small', { text: hint }) : null), control);
+    const field = (title, control, hint) => {
+      const input = control.matches('input, select') ? control : control.querySelector('input, select');
+      input?.setAttribute('aria-label', title);
+      return h('div', { class: 'field' }, h('label', {}, title, hint ? h('small', { text: hint }) : null), control);
+    };
 
     const fields = [
       field(t('settings.language'), select('lang', LANGS.map((l) => [l.code, l.label]))),
