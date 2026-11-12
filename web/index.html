@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Agent Office</title>
+    <meta name="description" content="Your personal AI agents, alive in a tiny pixel-art office." />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0e1120" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <div class="bg-glow" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <button class="icon-btn only-narrow" id="btn-sidebar" aria-label="Agents" aria-controls="sidebar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+      </button>
+      <div class="brand">
+        <img class="logo" src="favicon.svg" alt="" width="30" height="30" />
+        <div class="brand-text">
+          <h1 id="office-title">Agent Office</h1>
+          <p id="office-subtitle"></p>
+        </div>
+      </div>
+
+      <div class="stats" id="stats" role="status" aria-live="polite">
+        <span class="chip" data-kind="active"><i></i><b id="n-active">0</b><span data-i18n="stats.active">Active</span></span>
+        <span class="chip" data-kind="blocked"><i></i><b id="n-blocked">0</b><span data-i18n="stats.blocked">Needs you</span></span>
+        <span class="chip" data-kind="idle"><i></i><b id="n-idle">0</b><span data-i18n="stats.idle">Idle</span></span>
+      </div>
+
+      <div class="topbar-actions">
+        <span class="conn" id="conn" data-mode="connecting" title=""><i></i><span id="conn-text">…</span></span>
+        <button class="icon-btn" id="btn-load" data-i18n-title="actions.load" title="Load roster (JSON)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" /></svg>
+        </button>
+        <button class="icon-btn" id="btn-theme" data-i18n-title="actions.theme" title="Theme">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z" /></svg>
+        </button>
+        <button class="icon-btn" id="btn-settings" data-i18n-title="actions.settings" title="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 00-2-1.2L14 3h-4l-.6 2.6a7 7 0 00-2 1.2l-2.3-.9-2 3.4 2 1.5A7 7 0 005 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-.9c.6.5 1.3.9 2 1.2L10 21h4l.6-2.6c.7-.3 1.4-.7 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z" /></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="sidebar glass" id="sidebar" aria-label="Agents">
+        <div class="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" /></svg>
+          <input id="search" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="search.placeholder" placeholder="Search agents…" />
+        </div>
+        <div class="filters" id="filters" role="group">
+          <button class="pill is-on" data-filter="all" data-i18n="filter.all">All</button>
+          <button class="pill" data-filter="active" data-i18n="filter.active">Active</button>
+          <button class="pill" data-filter="blocked" data-i18n="filter.blocked">Needs you</button>
+          <button class="pill" data-filter="idle" data-i18n="filter.idle">Idle</button>
+        </div>
+        <div class="roster" id="roster"></div>
+      </aside>
+
+      <section class="stage" id="stage">
+        <canvas id="office" tabindex="0" role="img" aria-label="Pixel office with your agents"></canvas>
+
+        <div class="zoom glass" id="zoom">
+          <button class="icon-btn" id="btn-zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button>
+          <button class="icon-btn" id="btn-zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg></button>
+          <button class="icon-btn" id="btn-fit" aria-label="Fit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4" /></svg></button>
+          <button class="icon-btn" id="btn-full" aria-label="Fullscreen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" /></svg></button>
+        </div>
+
+        <div class="legend glass" id="legend">
+          <button class="legend-head" id="legend-toggle" aria-expanded="true"><span data-i18n="legend.title">Legend</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg></button>
+          <ul id="legend-list"></ul>
+        </div>
+
+        <div class="log glass" id="log" data-open="true">
+          <button class="log-head" id="log-toggle" aria-expanded="true"><span data-i18n="log.title">Activity</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg></button>
+          <ol id="log-list" aria-live="off"></ol>
+        </div>
+
+        <aside class="drawer glass" id="drawer" aria-label="Agent details" hidden></aside>
+
+        <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+        <div class="drop" id="drop" hidden><span data-i18n="drop.hint">Drop a roster .json file to load it</span></div>
+      </section>
+    </main>
+
+    <dialog id="settings" class="modal glass">
+      <form method="dialog">
+        <header>
+          <h2 data-i18n="settings.title">Settings</h2>
+          <button class="icon-btn" value="close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
+        </header>
+        <div class="fields" id="settings-fields"></div>
+        <footer>
+          <button class="btn ghost" id="btn-reset-roster" type="button" data-i18n="settings.resetRoster">Reset to example roster</button>
+          <button class="btn" value="close" data-i18n="settings.done">Done</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <input type="file" id="file" accept="application/json,.json" hidden />
+
+    <noscript><p class="noscript">Agent Office needs JavaScript to draw the office.</p></noscript>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,87 @@
+{
+  "office": {
+    "title": "Mening jamoam",
+    "subtitle": "Shaxsiy AI agentlar",
+    "mainAgent": "direktor"
+  },
+  "departments": [
+    { "id": "boshqaruv", "name": "Boshqaruv", "color": "purple" },
+    { "id": "marketing", "name": "Marketing", "color": "orange" },
+    { "id": "texnik", "name": "Texnik", "color": "blue" },
+    { "id": "moliya", "name": "Moliya", "color": "green" }
+  ],
+  "agents": [
+    {
+      "id": "direktor",
+      "name": "Direktor",
+      "role": "Vazifalarni taqsimlaydi",
+      "department": "boshqaruv",
+      "model": "opus",
+      "description": "Har bir vazifani qabul qiladi, bosqichlarga bo‘ladi va mos mutaxassisga topshiradi. Natijani sizga yetkazishdan oldin tekshiradi.",
+      "tools": ["Task", "Read", "Write"],
+      "skills": ["rejalashtirish", "topshiriq berish"],
+      "look": { "hair": "short", "accessory": "tie" }
+    },
+    {
+      "id": "tadqiqotchi",
+      "name": "Tadqiqotchi",
+      "role": "Manbalarni topadi va solishtiradi",
+      "department": "boshqaruv",
+      "model": "sonnet",
+      "tools": ["WebSearch", "WebFetch", "Read"],
+      "look": { "hair": "bun", "accessory": "glasses" }
+    },
+    {
+      "id": "marketolog",
+      "name": "Marketolog",
+      "role": "Strategiya va kampaniyalar",
+      "department": "marketing",
+      "model": "sonnet",
+      "tools": ["Read", "Write", "WebSearch"],
+      "skills": ["kontent reja", "tahlil"]
+    },
+    {
+      "id": "kontent-muharriri",
+      "name": "Kontent muharriri",
+      "role": "Maqola va postlar",
+      "department": "marketing",
+      "model": "sonnet",
+      "tools": ["Read", "Write"],
+      "look": { "hair": "long", "accessory": "earrings" }
+    },
+    {
+      "id": "tarjimon",
+      "name": "Tarjimon",
+      "role": "UZ, RU, EN tarjimalari",
+      "department": "marketing",
+      "model": "haiku",
+      "tools": ["Read", "Write"]
+    },
+    {
+      "id": "dasturchi",
+      "name": "Dasturchi",
+      "role": "Kod va integratsiyalar",
+      "department": "texnik",
+      "model": "sonnet",
+      "tools": ["Read", "Edit", "Write", "Bash"],
+      "look": { "hair": "spiky", "accessory": "headset" }
+    },
+    {
+      "id": "tekshiruvchi",
+      "name": "Tekshiruvchi",
+      "role": "Testlar va sifat nazorati",
+      "department": "texnik",
+      "model": "haiku",
+      "tools": ["Read", "Bash", "Grep"]
+    },
+    {
+      "id": "buxgalter",
+      "name": "Buxgalter",
+      "role": "Hisob-kitob va hisobotlar",
+      "department": "moliya",
+      "model": "sonnet",
+      "tools": ["Read", "Write", "Bash"],
+      "look": { "hair": "bob", "accessory": "glasses" }
+    }
+  ]
+}

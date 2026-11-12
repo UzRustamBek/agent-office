@@ -1,0 +1,262 @@
+{
+  "office": {
+    "title": "Agent Office",
+    "subtitle": "My personal AI team",
+    "mainAgent": "director"
+  },
+  "departments": [
+    { "id": "command", "name": "Command", "color": "#6c8cff" },
+    { "id": "engineering", "name": "Engineering", "color": "#3fb68b" },
+    { "id": "growth", "name": "Content & Growth", "color": "#f0883e" },
+    { "id": "research", "name": "Research", "color": "#c07cf0" },
+    { "id": "operations", "name": "Operations", "color": "#e8c547" }
+  ],
+  "agents": [
+    {
+      "id": "director",
+      "name": "Director",
+      "role": "Orchestrator",
+      "department": "command",
+      "model": "opus",
+      "description": "Receives every task, breaks it into steps and hands each step to the right specialist. Reviews the results before they reach you.",
+      "tools": ["Task", "Read", "Write"],
+      "skills": ["planning", "delegation", "summaries"],
+      "look": { "skin": 1, "hair": "short", "hairColor": 1, "accessory": "tie" }
+    },
+    {
+      "id": "planner",
+      "name": "Planner",
+      "role": "Roadmaps and priorities",
+      "department": "command",
+      "model": "sonnet",
+      "description": "Turns goals into ordered plans with owners, deadlines and acceptance criteria.",
+      "tools": ["Read", "Write"],
+      "skills": ["roadmaps", "estimation"],
+      "look": { "skin": 3, "hair": "bob", "hairColor": 4 }
+    },
+    {
+      "id": "reviewer",
+      "name": "Reviewer",
+      "role": "Final quality check",
+      "department": "command",
+      "model": "sonnet",
+      "description": "Checks every deliverable against the brief: facts, tone, formatting and missing pieces.",
+      "tools": ["Read", "Grep"],
+      "skills": ["review", "fact checking"],
+      "look": { "skin": 0, "hair": "short", "hairColor": 0, "accessory": "glasses" }
+    },
+    {
+      "id": "analyst",
+      "name": "Analyst",
+      "role": "Numbers and dashboards",
+      "department": "command",
+      "model": "sonnet",
+      "description": "Cleans data, builds tables and charts, explains what the numbers mean.",
+      "tools": ["Read", "Bash", "Write"],
+      "skills": ["spreadsheets", "SQL", "charts"],
+      "look": { "skin": 4, "hair": "curly", "hairColor": 2 }
+    },
+
+    {
+      "id": "architect",
+      "name": "Architect",
+      "role": "System design",
+      "department": "engineering",
+      "model": "opus",
+      "description": "Chooses structure, boundaries and trade-offs before any code is written.",
+      "tools": ["Read", "Grep", "Write"],
+      "skills": ["system design", "ADR"],
+      "look": { "skin": 2, "hair": "spiky", "hairColor": 3, "accessory": "glasses" }
+    },
+    {
+      "id": "backend",
+      "name": "Backend",
+      "role": "APIs and data",
+      "department": "engineering",
+      "model": "sonnet",
+      "description": "Implements services, database schemas and integrations.",
+      "tools": ["Read", "Edit", "Write", "Bash"],
+      "skills": ["Node.js", "PostgreSQL", "REST"],
+      "look": { "skin": 1, "hair": "short", "hairColor": 5, "accessory": "headset" }
+    },
+    {
+      "id": "frontend",
+      "name": "Frontend",
+      "role": "Interfaces",
+      "department": "engineering",
+      "model": "sonnet",
+      "description": "Builds accessible, fast interfaces from design specs.",
+      "tools": ["Read", "Edit", "Write", "Bash"],
+      "skills": ["HTML/CSS", "TypeScript", "accessibility"],
+      "look": { "skin": 3, "hair": "bun", "hairColor": 6 }
+    },
+    {
+      "id": "devops",
+      "name": "DevOps",
+      "role": "Pipelines and servers",
+      "department": "engineering",
+      "model": "sonnet",
+      "description": "Owns CI, deployments, monitoring and backups.",
+      "tools": ["Bash", "Read", "Edit"],
+      "skills": ["Docker", "GitHub Actions", "Linux"],
+      "look": { "skin": 0, "hair": "cap", "hairColor": 1, "accessory": "headset" }
+    },
+    {
+      "id": "qa",
+      "name": "QA",
+      "role": "Tests and bug hunting",
+      "department": "engineering",
+      "model": "haiku",
+      "description": "Writes tests, reproduces bugs and verifies fixes.",
+      "tools": ["Read", "Bash", "Grep"],
+      "skills": ["test plans", "regression"],
+      "look": { "skin": 5, "hair": "short", "hairColor": 0, "accessory": "glasses" }
+    },
+    {
+      "id": "security",
+      "name": "Security",
+      "role": "Threat review",
+      "department": "engineering",
+      "model": "opus",
+      "description": "Reviews code and infrastructure for vulnerabilities and leaked secrets.",
+      "tools": ["Read", "Grep"],
+      "skills": ["OWASP", "secret scanning"],
+      "look": { "skin": 2, "hair": "bald", "hairColor": 0, "accessory": "beard" }
+    },
+
+    {
+      "id": "writer",
+      "name": "Writer",
+      "role": "Articles and copy",
+      "department": "growth",
+      "model": "sonnet",
+      "description": "Writes clear articles, landing page copy and emails in your tone of voice.",
+      "tools": ["Read", "Write", "WebSearch"],
+      "skills": ["long-form", "copywriting"],
+      "look": { "skin": 1, "hair": "long", "hairColor": 3 }
+    },
+    {
+      "id": "seo",
+      "name": "SEO",
+      "role": "Search visibility",
+      "department": "growth",
+      "model": "sonnet",
+      "description": "Finds keywords, audits pages and tracks rankings.",
+      "tools": ["WebSearch", "WebFetch", "Write"],
+      "skills": ["keywords", "audits"],
+      "look": { "skin": 4, "hair": "short", "hairColor": 2 }
+    },
+    {
+      "id": "social",
+      "name": "Social",
+      "role": "Posts and community",
+      "department": "growth",
+      "model": "haiku",
+      "description": "Plans the content calendar and drafts posts for each channel.",
+      "tools": ["Write", "WebSearch"],
+      "skills": ["content calendar", "short-form"],
+      "look": { "skin": 0, "hair": "bob", "hairColor": 7, "accessory": "earrings" }
+    },
+    {
+      "id": "designer",
+      "name": "Designer",
+      "role": "Visuals and layout",
+      "department": "growth",
+      "model": "sonnet",
+      "description": "Creates layouts, color systems and image briefs.",
+      "tools": ["Read", "Write"],
+      "skills": ["layout", "color", "brand"],
+      "look": { "skin": 3, "hair": "curly", "hairColor": 5 }
+    },
+    {
+      "id": "translator",
+      "name": "Translator",
+      "role": "Localization",
+      "department": "growth",
+      "model": "haiku",
+      "description": "Translates and localizes content while keeping meaning and tone.",
+      "tools": ["Read", "Write"],
+      "skills": ["EN", "RU", "UZ"],
+      "look": { "skin": 2, "hair": "long", "hairColor": 1 }
+    },
+
+    {
+      "id": "researcher",
+      "name": "Researcher",
+      "role": "Deep dives",
+      "department": "research",
+      "model": "sonnet",
+      "description": "Collects sources, compares options and reports with citations.",
+      "tools": ["WebSearch", "WebFetch", "Read"],
+      "skills": ["literature review", "benchmarks"],
+      "look": { "skin": 1, "hair": "bun", "hairColor": 4, "accessory": "glasses" }
+    },
+    {
+      "id": "doc-reader",
+      "name": "Doc Reader",
+      "role": "PDFs and long files",
+      "department": "research",
+      "model": "haiku",
+      "description": "Reads long documents and returns structured summaries and quotes.",
+      "tools": ["Read"],
+      "skills": ["summaries", "extraction"],
+      "look": { "skin": 5, "hair": "short", "hairColor": 0 }
+    },
+    {
+      "id": "fact-checker",
+      "name": "Fact Checker",
+      "role": "Verification",
+      "department": "research",
+      "model": "sonnet",
+      "description": "Verifies claims against primary sources and flags anything unsupported.",
+      "tools": ["WebSearch", "WebFetch"],
+      "skills": ["verification"],
+      "look": { "skin": 0, "hair": "spiky", "hairColor": 6, "accessory": "glasses" }
+    },
+
+    {
+      "id": "finance",
+      "name": "Finance",
+      "role": "Budgets and invoices",
+      "department": "operations",
+      "model": "sonnet",
+      "description": "Tracks budgets, prepares invoices and explains cash flow.",
+      "tools": ["Read", "Write", "Bash"],
+      "skills": ["budgeting", "reporting"],
+      "look": { "skin": 3, "hair": "short", "hairColor": 1, "accessory": "tie" }
+    },
+    {
+      "id": "legal",
+      "name": "Legal",
+      "role": "Contracts",
+      "department": "operations",
+      "model": "opus",
+      "description": "Reads contracts, highlights risks and drafts plain-language summaries. Not legal advice.",
+      "tools": ["Read", "Write"],
+      "skills": ["contracts", "compliance"],
+      "look": { "skin": 4, "hair": "bob", "hairColor": 0 }
+    },
+    {
+      "id": "scheduler",
+      "name": "Scheduler",
+      "role": "Calendar and reminders",
+      "department": "operations",
+      "model": "haiku",
+      "description": "Finds time slots, prepares agendas and sends reminders for approval.",
+      "tools": ["Read", "Write"],
+      "skills": ["calendars", "agendas"],
+      "look": { "skin": 1, "hair": "bun", "hairColor": 7, "accessory": "earrings" }
+    },
+    {
+      "id": "support",
+      "name": "Support",
+      "role": "Replies and triage",
+      "department": "operations",
+      "model": "haiku",
+      "description": "Drafts replies to customers, tags tickets and escalates when unsure.",
+      "tools": ["Read", "Write"],
+      "skills": ["triage", "tone"],
+      "look": { "skin": 2, "hair": "short", "hairColor": 3, "accessory": "headset" }
+    }
+  ]
+}

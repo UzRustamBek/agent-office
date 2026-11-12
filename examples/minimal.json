@@ -1,0 +1,8 @@
+{
+  "office": { "title": "Tiny Team", "mainAgent": "lead" },
+  "agents": [
+    { "id": "lead", "name": "Lead", "role": "Plans and delegates" },
+    { "id": "builder", "name": "Builder", "role": "Writes the code" },
+    { "id": "checker", "name": "Checker", "role": "Reviews and tests" }
+  ]
+}

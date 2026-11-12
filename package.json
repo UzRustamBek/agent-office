@@ -1,0 +1,55 @@
+{
+  "name": "agent-office",
+  "version": "1.0.0",
+  "description": "Your personal AI agents, alive in a tiny pixel-art office. Zero dependencies.",
+  "type": "module",
+  "license": "MIT",
+  "author": "UzRustamBek",
+  "homepage": "https://github.com/UzRustamBek/agent-office#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/UzRustamBek/agent-office.git"
+  },
+  "bugs": {
+    "url": "https://github.com/UzRustamBek/agent-office/issues"
+  },
+  "keywords": [
+    "ai-agents",
+    "claude-code",
+    "subagents",
+    "pixel-art",
+    "dashboard",
+    "visualization",
+    "canvas",
+    "agent-orchestration"
+  ],
+  "bin": {
+    "agent-office": "bin/agent-office.js"
+  },
+  "files": [
+    "bin/",
+    "server/",
+    "hook/",
+    "web/",
+    "docs/",
+    "examples/",
+    "agents.example.json",
+    "README.md",
+    "README.uz.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node bin/agent-office.js start",
+    "demo": "node bin/agent-office.js start --demo",
+    "import": "node bin/agent-office.js import",
+    "hooks": "node bin/agent-office.js hooks",
+    "doctor": "node bin/agent-office.js doctor",
+    "test": "node scripts/test.mjs",
+    "check": "node scripts/check.mjs",
+    "banner": "node scripts/make-banner.mjs"
+  }
+}
