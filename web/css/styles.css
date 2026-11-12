@@ -1010,3 +1010,63 @@ button {
     right: 10px;
   }
 }
+
+/* --- hierarchy ------------------------------------------------------------ */
+.agent[data-indent="1"] {
+  margin-left: 12px;
+  width: calc(100% - 12px);
+}
+.agent[data-indent="2"] {
+  margin-left: 24px;
+  width: calc(100% - 24px);
+}
+.agent[data-indent="3"] {
+  margin-left: 36px;
+  width: calc(100% - 36px);
+}
+.agent[data-tier="chief"] .name::before,
+.agent[data-tier="manager"] .name::before,
+.tag.person[data-tier="chief"]::before,
+.tag.person[data-tier="manager"]::before {
+  margin-right: 4px;
+  font-size: 11px;
+}
+.agent[data-tier="chief"] .name::before,
+.tag.person[data-tier="chief"]::before {
+  content: "★";
+  color: #e8c547;
+}
+.agent[data-tier="manager"] .name::before,
+.tag.person[data-tier="manager"]::before {
+  content: "◆";
+  color: var(--accent);
+}
+.badge.tier[data-tier="chief"] {
+  border-color: color-mix(in srgb, #e8c547 60%, transparent);
+  color: #e8c547;
+}
+.badge.tier[data-tier="manager"] {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.hier {
+  display: grid;
+  gap: 10px;
+}
+.hier small {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.hier .muted {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.tag.person {
+  font-family: var(--font);
+  cursor: pointer;
+  color: inherit;
+}
+.tag.person:hover {
+  background: color-mix(in srgb, var(--accent) 20%, var(--panel-hi));
+}

@@ -68,16 +68,18 @@ SSE messages: `snapshot` (full state; sent on connect and whenever the roster ch
 
 `core/layout.js` turns a roster into a tile grid (1 tile = 16 logical pixels):
 
-1. Each department becomes a **zone** with a desk grid: `cols = clamp(round(sqrt(n * 1.5)), 1, 5)`, 3 x 3 tiles per desk cell.
-2. Zones are packed in rows. The interior width is chosen by trying every width and keeping the one whose office aspect ratio is closest to 1.9.
-3. A bottom band holds the **lounge** (sofas, TV, bookshelf), **pantry** (coffee, vending, cooler) and **meeting room** (whiteboard and table). Components are added in that priority order while they fit.
-4. Every furniture footprint is blocked on the grid; desks block their chair tile, which is only enterable as a goal.
+1. `core/roster.js` first derives the **org chart**: every agent gets `reportsTo`, `level`, `tier` and `team` (explicit `reportsTo`, otherwise inferred from the main agent and department heads).
+2. Each department becomes a **zone**. Its agents are grouped by level and every level is a row of 3 x 3 tile desk cells (up to 6 per row, rows centered), so a zone reads top-down: heads first, doers last.
+3. The zone holding the top-level agents (the main agent) is placed **alone at the top**; a 2-tile corridor separates it from the other departments, which share one row while they fit in 68 tiles and are otherwise packed so the office aspect ratio is closest to 1.9.
+4. `layout.orgLines` lists the reporting lines in tile coordinates: a trunk and bus in the corridor down to every first-row department, and an elbow from each manager's desk to every direct report one row below. They are painted into the static layer, under the characters.
+5. A bottom band holds the **lounge** (sofas, TV, bookshelf), **pantry** (coffee, vending, cooler) and **meeting room** (whiteboard and table). Components are added in that priority order while they fit.
+6. Every furniture footprint is blocked on the grid; desks block their chair tile, which is only enterable as a goal. Desk furniture carries the agent's `tier`, so chiefs and managers get a darker desk and a nameplate.
 
 Invariants verified by `test/core.test.js`: one desk per agent, no overlapping furniture, everything inside the walls, every seat reachable from the lounge, deterministic output.
 
 ## World and rendering
 
-* **`office/world.js`** owns one `Character` per agent. A small state machine (`seated`, `walking`, `spot`) moves characters with `findPath` (Dijkstra with a turn penalty). Idle agents wait 20 to 65 s, pick a free lounge spot, stay 7 to 21 s and walk back; any new work sends them back at once.
+* **`office/world.js`** owns one `Character` per agent. A small state machine (`seated`, `walking`, `spot`) moves characters with `findPath` (Dijkstra with a turn penalty). Idle agents may take a coffee or sofa break, controlled by the **Breaks** setting (`breaks=off|rare|normal`): *rare* (default) waits 100 to 260 s between breaks and lets at most 10 % of the office be away at once, *normal* is the lively original, *off* keeps everyone at their desks. Any new work sends a strolling agent back at once.
 * **`office/character.js`** draws a 16 x 26 character from rectangles: every direction, walk cycle and arm pose is generated, so looks are plain data.
 * **`office/draw.js`** draws the static floor and walls once into an offscreen canvas and the furniture every frame as depth-sorted layers (z = foot y). Monitors render live content for the owner's status.
 * **`office/renderer.js`** handles the camera (wheel, drag, pinch, follow), draws everything at integer-friendly scale with smoothing off, and draws text and bubbles afterwards in screen space so they stay sharp.

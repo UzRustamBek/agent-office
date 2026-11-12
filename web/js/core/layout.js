@@ -10,6 +10,10 @@ export const WALL_TOP = 3; // rows of wall face at the top
 const LOUNGE_ROWS = 8;
 const MIN_INTERIOR_W = 24;
 const TARGET_ASPECT = 1.9;
+const MIN_ZONE_COLS = 3; // keeps small departments from looking cramped
+const MAX_ZONE_COLS = 6;
+const CORRIDOR = 2; // rows between the top (command) zone and the departments
+const SINGLE_ROW_MAX = 68; // departments share one row while they fit in this many tiles
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -18,6 +22,22 @@ export function zoneGrid(n) {
   const cols = clamp(Math.round(Math.sqrt(n * 1.5)), 1, 5);
   const rows = Math.ceil(n / cols);
   return { cols, rows, w: cols * 3 + 1, h: 2 + rows * 3 };
+}
+
+/**
+ * Shape of a department: agents are grouped by reporting level (top level first)
+ * and every level becomes its own row of desks, so the zone reads like an org chart.
+ */
+export function zoneShape(agents) {
+  const levels = [...new Set(agents.map((a) => a.level || 0))].sort((a, b) => a - b);
+  const groups = levels.map((lv) => agents.filter((a) => (a.level || 0) === lv));
+  const widest = Math.max(...groups.map((g) => g.length));
+  const cols = clamp(Math.max(zoneGrid(agents.length).cols, MIN_ZONE_COLS, Math.min(widest, MAX_ZONE_COLS)), 1, MAX_ZONE_COLS);
+  const rows = [];
+  groups.forEach((g, gi) => {
+    for (let i = 0; i < g.length; i += cols) rows.push({ level: levels[gi], agents: g.slice(i, i + cols) });
+  });
+  return { cols, rows, w: cols * 3 + 1, h: 2 + rows.length * 3 };
 }
 
 function packZones(zones, width) {
@@ -38,17 +58,18 @@ function packZones(zones, width) {
   return { rows, height };
 }
 
-function chooseWidth(zones) {
-  if (!zones.length) return MIN_INTERIOR_W;
-  const maxZoneW = Math.max(...zones.map((z) => z.w));
-  const minW = Math.max(MIN_INTERIOR_W, maxZoneW);
-  const sumW = zones.reduce((s, z) => s + z.w, 0) + zones.length - 1;
-  const maxW = Math.max(minW, sumW);
+function chooseWidth(top, rest) {
+  const all = top ? [top, ...rest] : rest;
+  if (!all.length) return MIN_INTERIOR_W;
+  const minW = Math.max(MIN_INTERIOR_W, ...all.map((z) => z.w));
+  if (!rest.length) return minW;
+  const sumW = rest.reduce((s, z) => s + z.w, 0) + rest.length - 1;
+  if (sumW <= SINGLE_ROW_MAX) return Math.max(minW, sumW);
   let best = null;
-  for (let w = minW; w <= maxW; w++) {
-    const { height } = packZones(zones, w);
+  for (let w = minW; w <= Math.max(minW, sumW); w++) {
+    const { height } = packZones(rest, w);
     const officeW = w + 2;
-    const officeH = WALL_TOP + height + 2 + LOUNGE_ROWS + 1;
+    const officeH = WALL_TOP + (top ? top.h + CORRIDOR : 0) + height + 2 + LOUNGE_ROWS + 1;
     const score = Math.abs(Math.log(officeW / officeH / TARGET_ASPECT));
     if (!best || score < best.score - 1e-9) best = { w, score };
   }
@@ -69,22 +90,29 @@ export function buildLayout(roster) {
     byDept.get(a.department).push(a);
   }
 
-  const zones = roster.departments
+  const all = roster.departments
     .filter((d) => byDept.get(d.id).length)
     .map((d) => {
       const agents = byDept.get(d.id);
-      return { id: d.id, name: d.name, color: d.color, agents, ...zoneGrid(agents.length) };
-    })
-    .sort((a, b) => b.agents.length - a.agents.length);
+      return { id: d.id, name: d.name, color: d.color, agents, ...zoneShape(agents) };
+    });
 
-  const innerW = chooseWidth(zones);
-  const packed = packZones(zones, innerW);
-  const usedW = Math.max(MIN_INTERIOR_W, ...packed.rows.map((r) => r.w));
+  // The top zone holds the main agent (or whoever has no manager): it sits alone
+  // at the top, and every other department hangs below it.
+  const mainAgent = roster.agents.find((a) => a.id === roster.office?.mainAgent);
+  const topDept = (mainAgent && !mainAgent.reportsTo ? mainAgent : roster.agents.find((a) => !a.reportsTo))?.department;
+  const top = all.find((z) => z.id === topDept) || null;
+  const rest = all.filter((z) => z !== top).sort((a, b) => b.agents.length - a.agents.length);
+
+  const innerW = chooseWidth(top, rest);
+  const packed = rest.length ? packZones(rest, innerW) : { rows: [], height: 0 };
+  const usedW = Math.max(MIN_INTERIOR_W, top ? top.w : 0, ...packed.rows.map((r) => r.w));
   const W = Math.max(innerW, usedW);
 
   const ox = 1;
   const oy = WALL_TOP;
-  const loungeY = oy + packed.height + 1;
+  const bodyH = (top ? top.h : 0) + (top && rest.length ? CORRIDOR : 0) + packed.height;
+  const loungeY = oy + bodyH + 1;
   const width = W + 2;
   const height = loungeY + LOUNGE_ROWS + 1;
 
@@ -103,6 +131,7 @@ export function buildLayout(roster) {
   const spots = [];
   const desks = {};
   const placedZones = [];
+  const orgLines = [];
   let spotSeq = 0;
 
   const addFurniture = (type, x, y, w, h, extra = {}) => {
@@ -114,23 +143,62 @@ export function buildLayout(roster) {
   };
 
   // zones + desks --------------------------------------------------------
+  const placeZone = (z, zx, zy, isTop) => {
+    const placed = { id: z.id, name: z.name, color: z.color, x: zx, y: zy, w: z.w, h: z.h, cols: z.cols, rows: z.rows.length, top: isTop };
+    placedZones.push(placed);
+    let order = 0;
+    z.rows.forEach((row, r) => {
+      const offset = Math.floor(((z.cols - row.agents.length) * 3) / 2);
+      row.agents.forEach((agent, i) => {
+        const cx = zx + 1 + offset + i * 3;
+        const cy = zy + 2 + r * 3;
+        addFurniture('desk', cx, cy, 2, 2, { agent: agent.id, variant: order++, tier: agent.tier || 'doer' });
+        desks[agent.id] = { agent: agent.id, zone: z.id, seat: { x: cx, y: cy }, face: 'down', level: agent.level || 0 };
+      });
+    });
+    return placed;
+  };
+
   let cursorY = oy;
-  for (const row of packed.rows) {
+  let topPlaced = null;
+  if (top) {
+    topPlaced = placeZone(top, ox + Math.floor((W - top.w) / 2), cursorY, true);
+    cursorY += top.h + (rest.length ? CORRIDOR : 0);
+  }
+  const firstRowZones = [];
+  packed.rows.forEach((row, ri) => {
     let cursorX = ox + Math.floor((W - row.w) / 2);
     for (const z of row.items) {
-      const placed = { id: z.id, name: z.name, color: z.color, x: cursorX, y: cursorY, w: z.w, h: z.h, cols: z.cols, rows: z.rows };
-      placedZones.push(placed);
-      z.agents.forEach((agent, i) => {
-        const col = i % z.cols;
-        const r = Math.floor(i / z.cols);
-        const cx = cursorX + 1 + col * 3;
-        const cy = cursorY + 2 + r * 3;
-        addFurniture('desk', cx, cy, 2, 2, { agent: agent.id, variant: i });
-        desks[agent.id] = { agent: agent.id, zone: z.id, seat: { x: cx, y: cy }, face: 'down' };
-      });
+      const p = placeZone(z, cursorX, cursorY, false);
+      if (ri === 0) firstRowZones.push(p);
       cursorX += z.w + 1;
     }
     cursorY += row.h + 1;
+  });
+
+  // reporting lines ---------------------------------------------------------
+  // corridor: from the top zone down to every department of the first row
+  if (topPlaced && firstRowZones.length) {
+    const fromX = topPlaced.x + topPlaced.w / 2;
+    const fromY = topPlaced.y + topPlaced.h;
+    const busY = fromY + CORRIDOR / 2;
+    const xs = firstRowZones.map((z) => z.x + z.w / 2);
+    orgLines.push({ x1: fromX, y1: fromY, x2: fromX, y2: busY, kind: 'trunk' });
+    orgLines.push({ x1: Math.min(fromX, ...xs), y1: busY, x2: Math.max(fromX, ...xs), y2: busY, kind: 'trunk' });
+    firstRowZones.forEach((z, i) => orgLines.push({ x1: xs[i], y1: busY, x2: xs[i], y2: z.y, kind: 'branch', color: z.color }));
+  }
+  // inside a department: from a manager's desk to each direct report one row below
+  for (const a of roster.agents) {
+    const d = desks[a.id];
+    const m = a.reportsTo ? desks[a.reportsTo] : null;
+    if (!d || !m || m.zone !== d.zone || d.seat.y - m.seat.y !== 3) continue;
+    const mx = m.seat.x + 1;
+    const cx = d.seat.x + 1;
+    const mid = m.seat.y + 2.5;
+    const color = placedZones.find((z) => z.id === d.zone)?.color;
+    orgLines.push({ x1: mx, y1: m.seat.y + 2, x2: mx, y2: mid, kind: 'tree', color });
+    if (mx !== cx) orgLines.push({ x1: Math.min(mx, cx), y1: mid, x2: Math.max(mx, cx), y2: mid, kind: 'tree', color });
+    orgLines.push({ x1: cx, y1: mid, x2: cx, y2: d.seat.y - 0.25, kind: 'tree', color });
   }
 
   // lounge band -----------------------------------------------------------
@@ -228,6 +296,7 @@ export function buildLayout(roster) {
     pxW: width * TILE,
     pxH: height * TILE,
     zones: placedZones,
+    orgLines,
     bands,
     desks,
     furniture,

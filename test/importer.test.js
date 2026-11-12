@@ -7,6 +7,7 @@ import path from 'node:path';
 import { parseFrontmatter } from '../server/frontmatter.js';
 import { importAgents } from '../server/importer.js';
 import { parseArgs } from '../server/cli.js';
+import { normalizeRoster } from '../web/js/core/roster.js';
 
 test('frontmatter: scalars, quotes, lists, block scalars', () => {
   const { data, body, hasFrontmatter } = parseFrontmatter(
@@ -110,4 +111,23 @@ test('cli: parseArgs handles flags, values, booleans and positionals', () => {
   assert.equal(flags['dry-run'], true);
   assert.equal(flags.port, '99');
   assert.equal(parseArgs(['--demo']).flags.demo, true);
+});
+
+test('importer: reports_to and lead in the front matter become org chart hints', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ao-org-'));
+  try {
+    fs.mkdirSync(path.join(dir, 'it'));
+    fs.writeFileSync(path.join(dir, 'it', 'cto.md'), '---\nname: cto\ndescription: Tech head.\nlead: true\nreports_to: none\n---\nbody');
+    fs.writeFileSync(path.join(dir, 'it', 'dev.md'), '---\nname: dev\ndescription: Builds things.\nreports_to: CTO\n---\nbody');
+    const { roster } = importAgents([dir]);
+    const byId = Object.fromEntries(roster.agents.map((a) => [a.id, a]));
+    assert.equal(byId.dev.reportsTo, 'cto');
+    // the importer passes the hints on; normalizeRoster turns them into levels
+    const org = Object.fromEntries(normalizeRoster(roster).agents.map((a) => [a.id, a]));
+    assert.equal(org.cto.level, 0); // "reports_to: none" = top of the organisation
+    assert.equal(org.cto.tier, 'chief');
+    assert.equal(org.dev.level, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

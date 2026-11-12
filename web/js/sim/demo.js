@@ -93,46 +93,60 @@ export function createSimulator({ getRoster, emit, seed = 7, speed = 1, maxScena
     return t;
   }
 
-  function planScenario(now) {
+  /**
+   * A manager breaks the task down: it thinks, briefs some of its direct reports
+   * (who may pass parts on to their own team), reviews the results and writes the
+   * summary. Anyone without free reports just does the work. Returns the finish time.
+   */
+  function planTree(agent, startAt, task, depth = 0) {
     const roster = getRoster();
-    const agents = roster.agents.filter((a) => !busy.has(a.id));
-    if (agents.length < 1) return false;
-    scenarios += 1;
-    const main = roster.office.mainAgent;
-    const lead = agents.find((a) => a.id === main) || pick(rng, agents);
-    const others = shuffle(rng, agents.filter((a) => a.id !== lead.id));
-    const solo = others.length === 0 || rng() < 0.22;
-    const task = pick(rng, TASKS);
+    const byId = new Map(roster.agents.map((a) => [a.id, a]));
+    const free = (agent.team || []).map((id) => byId.get(id)).filter((a) => a && !busy.has(a.id));
+    const delegates = free.length > 0 && depth < 3 && (depth === 0 || rng() < 0.7);
+    if (!delegates) return planWorker(agent, startAt);
 
-    if (solo) {
-      const end = planWorker(lead, now);
-      schedule(end + 100, () => (scenarios -= 1));
-      return true;
-    }
-
-    const crew = others.slice(0, 1 + Math.floor(rng() * Math.min(3, others.length)));
-    busy.add(lead.id);
-    let t = now;
-    schedule(t, () => status(lead.id, STATUS.THINKING, `Planning: ${task}`, null, Date.now()));
-    t += sc(range(rng, 1600, 2800));
-    schedule(t, () => status(lead.id, STATUS.DELEGATING, `Briefing ${crew.length} agent${crew.length > 1 ? 's' : ''}`, 'Task', Date.now()));
+    const crew = shuffle(rng, free).slice(0, 1 + Math.floor(rng() * Math.min(depth === 0 ? 3 : 2, free.length)));
+    busy.add(agent.id);
+    let t = startAt;
+    schedule(t, () => status(agent.id, STATUS.THINKING, `Planning: ${task}`, null, Date.now()));
+    t += sc(range(rng, 1400, 2400));
+    schedule(t, () => status(agent.id, STATUS.DELEGATING, `Briefing ${crew.length} agent${crew.length > 1 ? 's' : ''}`, 'Task', Date.now()));
     let latest = t;
-    crew.forEach((agent, i) => {
+    crew.forEach((member, i) => {
       const at = t + sc(300 + i * 700);
-      schedule(at, () => emit({ type: 'delegate', from: lead.id, to: agent.id, task, ts: Date.now() }));
-      const end = planWorker(agent, at + sc(500));
-      latest = Math.max(latest, end);
+      schedule(at, () => emit({ type: 'delegate', from: agent.id, to: member.id, task, ts: Date.now() }));
+      latest = Math.max(latest, planTree(member, at + sc(500), task, depth + 1));
     });
     t = latest + sc(400);
-    schedule(t, () => status(lead.id, STATUS.READING, 'Reviewing the results', 'Read', Date.now()));
-    t += sc(range(rng, 1800, 3000));
-    schedule(t, () => status(lead.id, STATUS.TYPING, 'Writing the summary', 'Write', Date.now()));
-    t += sc(range(rng, 2200, 3800));
+    schedule(t, () => status(agent.id, STATUS.READING, 'Reviewing the results', 'Read', Date.now()));
+    t += sc(range(rng, 1500, 2600));
+    schedule(t, () => status(agent.id, STATUS.TYPING, 'Writing the summary', 'Write', Date.now()));
+    t += sc(range(rng, 1800, 3200));
     schedule(t, () => {
-      status(lead.id, STATUS.DONE, 'Task complete', null, Date.now());
-      busy.delete(lead.id);
+      status(agent.id, STATUS.DONE, depth === 0 ? 'Task complete' : 'Finished', null, Date.now());
+      busy.delete(agent.id);
     });
-    schedule(t + 100, () => (scenarios -= 1));
+    return t;
+  }
+
+  function planScenario(now) {
+    const roster = getRoster();
+    const free = roster.agents.filter((a) => !busy.has(a.id));
+    if (free.length < 1) return false;
+    const main = free.find((a) => a.id === roster.office.mainAgent);
+    const managers = free.filter((a) => (a.team || []).length > 0);
+    const task = pick(rng, TASKS);
+
+    // Most work starts at the top and flows down the reporting lines; some is a
+    // department running its own task, and some is a single agent working alone.
+    const roll = rng();
+    let lead;
+    if (main && roll < 0.55) lead = main;
+    else if (managers.length && roll < 0.85) lead = pick(rng, managers);
+    else lead = pick(rng, free);
+    scenarios += 1;
+    const end = planTree(lead, now, task, 0);
+    schedule(end + 100, () => (scenarios -= 1));
     return true;
   }
 

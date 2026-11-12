@@ -57,6 +57,9 @@ export function drawStatic(ctx, layout, { night = false } = {}) {
     rect(ctx, px + 3, py + 14, zw - 6, 1, 'rgba(0,0,0,0.25)');
   }
 
+  // reporting lines (org chart painted on the floor)
+  drawOrgLines(ctx, layout);
+
   // rugs and other floor decor
   for (const d of layout.decor) if (d.type === 'rug') drawRug(ctx, d);
 
@@ -65,6 +68,29 @@ export function drawStatic(ctx, layout, { night = false } = {}) {
   rect(ctx, T, WALL_TOP * T + 3, (w - 2) * T, 2, 'rgba(20,20,40,0.10)');
 
   drawWalls(ctx, layout, night);
+}
+
+function drawOrgLines(ctx, layout) {
+  for (const l of layout.orgLines || []) {
+    const x1 = Math.round(Math.min(l.x1, l.x2) * T);
+    const y1 = Math.round(Math.min(l.y1, l.y2) * T);
+    const x2 = Math.round(Math.max(l.x1, l.x2) * T);
+    const y2 = Math.round(Math.max(l.y1, l.y2) * T);
+    const accent = l.color ? mix(l.color, '#1f2440', 0.35) : '#59628a';
+    const col = l.kind === 'trunk' ? '#59628a' : accent;
+    const thick = l.kind === 'tree' ? 1 : 2;
+    const half = Math.floor(thick / 2);
+    if (x1 === x2) rect(ctx, x1 - half, y1, thick, y2 - y1, col);
+    else rect(ctx, x1, y1 - half, x2 - x1, thick, col);
+  }
+  // junction dots where a line meets a department or a desk
+  for (const l of layout.orgLines || []) {
+    if (l.kind === 'branch') {
+      const x = Math.round(l.x2 * T);
+      const y = Math.round(l.y2 * T);
+      rect(ctx, x - 2, y - 3, 5, 3, l.color ? mix(l.color, '#ffffff', 0.15) : '#8b93b8');
+    }
+  }
 }
 
 function drawRug(ctx, d) {
@@ -333,8 +359,14 @@ export function furnitureLayers(f, env) {
   }
 }
 
+const TIER_WOOD = {
+  chief: { top: '#8a5c38', light: '#b07f55', dark: '#5f3e25' },
+  manager: { top: '#b98d62', light: '#d3aa7e', dark: '#85623f' },
+};
+
 function deskLayers(f, px, py, env) {
   const seatFoot = py + T;
+  const wood = TIER_WOOD[f.tier] || { top: WOOD, light: WOOD_L, dark: WOOD_D };
   const status = env.statusOf(f.agent) || 'idle';
   const zone = env.colorOfAgent(f.agent);
   return [
@@ -354,13 +386,21 @@ function deskLayers(f, px, py, env) {
         const t = env.t;
         const sleeping = status === 'sleeping';
         // desk top + front panel
-        rect(c, px, py + T, 2 * T, 12, WOOD);
-        rect(c, px, py + T, 2 * T, 1, WOOD_L);
-        rect(c, px, py + T + 11, 2 * T, 1, shade(WOOD, -20));
-        rect(c, px, py + T + 12, 2 * T, 4, WOOD_D);
-        rect(c, px + 1, py + T + 12, 2, 4, shade(WOOD_D, -25));
-        rect(c, px + 2 * T - 3, py + T + 12, 2, 4, shade(WOOD_D, -25));
+        rect(c, px, py + T, 2 * T, 12, wood.top);
+        rect(c, px, py + T, 2 * T, 1, wood.light);
+        rect(c, px, py + T + 11, 2 * T, 1, shade(wood.top, -20));
+        rect(c, px, py + T + 12, 2 * T, 4, wood.dark);
+        rect(c, px + 1, py + T + 12, 2, 4, shade(wood.dark, -25));
+        rect(c, px + 2 * T - 3, py + T + 12, 2, 4, shade(wood.dark, -25));
         rect(c, px, py + T + 15, 2 * T, 1, 'rgba(0,0,0,0.25)');
+        // nameplate: gold for the chief, steel for managers
+        if (f.tier === 'chief') {
+          rect(c, px + 11, py + T + 13, 10, 2, '#e8c547');
+          rect(c, px + 11, py + T + 13, 10, 1, '#fff0a8');
+        } else if (f.tier === 'manager') {
+          rect(c, px + 12, py + T + 13, 8, 2, '#aab8d8');
+          rect(c, px + 12, py + T + 13, 8, 1, '#dfe7fa');
+        }
         // laptop (lid seen from behind)
         rect(c, px + 3, py + T + 2, 10, 2, '#6c748c');
         rect(c, px + 4, py + 11, 8, 5, sleeping ? '#7a8196' : '#aab2c6');

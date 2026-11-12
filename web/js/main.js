@@ -34,6 +34,7 @@ for (const [key, field] of [['lang', 'lang'], ['theme', 'theme'], ['names', 'nam
   if (params.has(key)) app.settings[field] = params.get(key);
 }
 if (params.has('speed')) app.settings.speed = Math.max(0.25, Math.min(8, Number(params.get('speed')) || 1));
+if (params.has('breaks') && ['off', 'rare', 'normal'].includes(params.get('breaks'))) app.settings.breaks = params.get('breaks');
 if (params.has('motion')) app.settings.reduceMotion = params.get('motion') === 'reduced';
 
 const canvas = document.getElementById('office');
@@ -102,6 +103,7 @@ app.updateSettings = (patch) => {
     app.ui.applyTheme();
     if (app.world) app.world.reduceMotion = app.settings.reduceMotion;
   }
+  if ('breaks' in patch) app.world?.setBreaks(app.settings.breaks);
   if ('speed' in patch) app.sim?.setSpeed(app.settings.speed);
 };
 
@@ -136,7 +138,7 @@ async function fetchExampleRoster() {
 function rebuild({ keepView = false } = {}) {
   const roster = app.state.roster;
   app.layout = buildLayout(roster);
-  app.world = new World(roster, app.layout, { seed: 11, reduceMotion: app.settings.reduceMotion });
+  app.world = new World(roster, app.layout, { seed: 11, reduceMotion: app.settings.reduceMotion, breaks: app.settings.breaks });
   app.renderer.setWorld(app.world, app.layout, roster, { keepView });
   app.rosterJson = JSON.stringify(roster);
   app.ui.setTitle(roster);

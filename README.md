@@ -27,7 +27,8 @@ and wave at you when they need a decision.</p>
 A list of agents tells you *who exists*. A glance at an office tells you *who is busy, who is stuck and who is waiting for you*. Agent Office turns the agents you already run into a small living place:
 
 - **See state at a glance.** Typing, reading, searching, running a command, thinking, delegating, waiting for you, needs approval, finished, error. Each has its own pose, screen, color and speech bubble.
-- **See teamwork.** When one agent hands a task to another, a little envelope flies across the office.
+- **See teamwork.** When one agent hands a task to another, a little envelope flies across the office, along the reporting lines of your organization.
+- **See who answers to whom.** The chief sits at the top, departments hang below, and every reporting level gets its own row of desks.
 - **Know when to step in.** The "Needs you" counter pulses, the character raises a hand, and an optional chime plays.
 - **It is yours.** Departments, names, roles, looks and tools come from a plain JSON file, or are imported straight from your Claude Code agent folders.
 
@@ -71,15 +72,17 @@ node bin/agent-office.js start
       "name": "Director",
       "role": "Orchestrator",
       "department": "build",
+      "reportsTo": null,
       "model": "opus",
       "tools": ["Task", "Read"],
       "look": { "hair": "short", "accessory": "glasses" }
-    }
+    },
+    { "id": "backend", "name": "Backend", "role": "APIs and data", "department": "build", "reportsTo": "director" }
   ]
 }
 ```
 
-Save it as `agents.json` (or `agents.local.json`) next to where you run the command, or pass `--agents my.json`. The file is watched: edit it and the office updates live. Full reference: [docs/AGENTS-FORMAT.md](docs/AGENTS-FORMAT.md). Ready-made samples live in [examples/](examples) (`minimal.json`, and `uz-team.json` with Uzbek names). In the hosted demo you can also **drop a roster file onto the page** to see your team instantly.
+Save it as `agents.json` (or `agents.local.json`) next to where you run the command, or pass `--agents my.json`. The file is watched: edit it and the office updates live. `reportsTo` builds the org chart (it is inferred when omitted). Full reference: [docs/AGENTS-FORMAT.md](docs/AGENTS-FORMAT.md). Ready-made samples live in [examples/](examples) (`minimal.json`, and `uz-team.json` with Uzbek names). In the hosted demo you can also **drop a roster file onto the page** to see your team instantly.
 
 ## Connect Claude Code (live)
 
@@ -117,8 +120,9 @@ or `POST /api/events` with the bearer token printed in `~/.agent-office/servers/
 | | |
 |---|---|
 | **Office** | Departments become carpeted zones with a desk per agent, plus a lounge, pantry and meeting room. The layout is generated from your roster (1 to 120 agents). |
+| **Hierarchy** | An org chart you can walk through: chief on top, then department heads, then the people who do the work, joined by reporting lines. Gold and steel nameplates mark chiefs and managers. See [Hierarchy](docs/AGENTS-FORMAT.md#hierarchy). |
 | **Characters** | Drawn in code (no image files). Six skin tones, eight hairstyles, accessories, team-colored shirts, walk cycles in four directions, and a pose for every state. |
-| **Life** | Idle agents take coffee and sofa breaks, then walk back when work arrives. Path-finding with turn penalties keeps movement natural. |
+| **Life** | Working agents stay at their desks. Idle ones may stroll to the coffee machine or sofa (rarely by default; the *Breaks* setting makes it never or often) and walk back when work arrives. |
 | **Screens** | Each monitor shows what its agent is doing: scrolling code, a terminal, a document, search results, a delegation graph, a "?" or "!" alert. |
 | **Roster panel** | Search, filter (active / needs you / idle), department groups, live activity text. |
 | **Details drawer** | Role, model, tools, skills, counters, active time, recent history, follow camera. |
@@ -128,7 +132,7 @@ or `POST /api/events` with the bearer token printed in `~/.agent-office/servers/
 | **Accessible** | Keyboard shortcuts, reduced-motion mode, readable text rendered outside the canvas. |
 | **Mobile** | Pinch to zoom, drag to pan, slide-over roster. |
 
-Keyboard: `/` search · `f` fit · `+` `-` zoom · `l` log · `t` theme · `Esc` close.
+Settings (gear icon): theme, language, name tags, lighting, **breaks**, reduced motion. Keyboard: `/` search · `f` fit · `+` `-` zoom · `l` log · `t` theme · `Esc` close.
 
 ## Gallery
 

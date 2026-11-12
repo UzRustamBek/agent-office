@@ -100,6 +100,10 @@ export function importAgents(dirs, opts = {}) {
         skills: toList(data.skills),
       };
       if (color) agent.look = { shirt: color };
+      // optional org chart hints in the front matter: `reports_to: timlid`, `lead: true`
+      const boss = data.reports_to ?? data.reportsTo;
+      if (typeof boss === 'string') agent.reportsTo = boss.trim() ? slug(boss) : null;
+      if (data.lead === true || data.lead === 'true') agent.lead = true;
       found.set(agent.id, agent); // later folders (project) override earlier (user)
       files.push(file);
     }

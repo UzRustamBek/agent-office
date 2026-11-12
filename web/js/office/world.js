@@ -29,7 +29,7 @@ export class Character {
     this.spot = null;
     this.phase = rng();
     this.t = rng() * 10;
-    this.breakAt = now + 8000 + rng() * 30000;
+    this.breakAt = now; // set by the world (depends on the "breaks" setting)
     this.stayUntil = 0;
     this.blinkAt = now + 2000 + rng() * 3000;
     this.shakeUntil = 0;
@@ -37,9 +37,18 @@ export class Character {
   }
 }
 
+// How often idle agents leave their desk. "rare" keeps the office calm: most
+// agents stay seated and only one or two stroll to the lounge at a time.
+const BREAKS = {
+  off: null,
+  rare: { first: [50000, 130000], gap: [100000, 260000], stay: [6000, 11000], maxAway: 0.1 },
+  normal: { first: [8000, 38000], gap: [20000, 65000], stay: [7000, 21000], maxAway: 0.35 },
+};
+
 export class World {
-  constructor(roster, layout, { seed = 11, now = Date.now(), reduceMotion = false } = {}) {
+  constructor(roster, layout, { seed = 11, now = Date.now(), reduceMotion = false, breaks = 'rare' } = {}) {
     this.reduceMotion = reduceMotion;
+    this.breaks = breaks in BREAKS ? breaks : 'rare';
     this.rng = mulberry32(seed);
     this.chars = new Map();
     this.effects = [];
@@ -62,8 +71,29 @@ export class World {
       const ch = new Character(agent, desk.seat, now, this.rng, color);
       if (!old) ch.appear = 0;
       else ch.appear = 1;
+      ch.breakAt = this._nextBreak(now, true);
       this.chars.set(agent.id, ch);
     }
+  }
+
+  setBreaks(mode) {
+    this.breaks = mode in BREAKS ? mode : 'rare';
+    const now = Date.now();
+    for (const ch of this.chars.values()) ch.breakAt = this._nextBreak(now, true);
+  }
+
+  /** Time of the next coffee/sofa break, or Infinity when breaks are switched off. */
+  _nextBreak(now, first = false) {
+    const cfg = BREAKS[this.breaks];
+    if (!cfg) return Infinity;
+    const [lo, hi] = first ? cfg.first : cfg.gap;
+    return now + lo + this.rng() * (hi - lo);
+  }
+
+  _awayCount() {
+    let n = 0;
+    for (const c of this.chars.values()) if (c.mode !== 'seated') n++;
+    return n;
   }
 
   get(id) {
@@ -154,7 +184,8 @@ export class World {
     ch.x = s.x * TILE + 8;
     ch.y = s.standing ? (s.y + 1) * TILE - 2 : (s.y + 1) * TILE;
     ch.path = [];
-    ch.stayUntil = now + 7000 + this.rng() * 14000;
+    const [lo, hi] = (BREAKS[this.breaks] || BREAKS.normal).stay;
+    ch.stayUntil = now + lo + this.rng() * (hi - lo);
   }
 
   /** Advance every character. `statusOf(id)` returns the agent's current status. */
@@ -168,7 +199,9 @@ export class World {
 
       if (ch.mode === 'seated') {
         if (!wantsDesk && now >= ch.breakAt) {
-          const spot = this._pickSpot();
+          const cfg = BREAKS[this.breaks];
+          const cap = cfg ? Math.max(1, Math.round(this.chars.size * cfg.maxAway)) : 0;
+          const spot = cfg && this._awayCount() < cap ? this._pickSpot() : null;
           if (spot) {
             this.occupied.set(spot.id, ch.id);
             ch.spot = spot;
@@ -176,12 +209,12 @@ export class World {
               this._release(ch);
               ch.breakAt = now + 15000;
             }
-          } else ch.breakAt = now + 10000;
+          } else ch.breakAt = cfg ? now + 12000 + this.rng() * 12000 : Infinity;
         }
       } else if (ch.mode === 'spot') {
-        if (wantsDesk || now >= ch.stayUntil) {
+        if (wantsDesk || now >= ch.stayUntil || !BREAKS[this.breaks]) {
           this._sendToDesk(ch);
-          ch.breakAt = now + 20000 + this.rng() * 45000;
+          ch.breakAt = this._nextBreak(now);
         }
       } else if (ch.mode === 'walking') {
         if (wantsDesk && ch.target === 'spot') {

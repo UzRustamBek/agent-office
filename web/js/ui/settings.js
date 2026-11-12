@@ -13,6 +13,7 @@ export function defaultSettings() {
     names: 'always', // always | hover | off
     lighting: 'auto', // auto | day | night
     reduceMotion: false,
+    breaks: 'rare', // off | rare | normal: how often idle agents leave their desks
     bubbles: true,
     sound: false,
     speed: 1,

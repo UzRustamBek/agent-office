@@ -138,6 +138,91 @@ const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const strList = (v, max = 24, itemMax = 48) =>
   Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim().slice(0, itemMax)).slice(0, max) : [];
 
+// ---------------------------------------------------------------------------
+// Hierarchy: who reports to whom
+// ---------------------------------------------------------------------------
+
+export const TIERS = ['chief', 'manager', 'doer'];
+
+const HEAD_RE = /(^|[^a-z])(head|lead|chief|director|manager)([^a-z]|$)|direktor|boshliq|rahbar|timlid|(^|[^a-z])(cto|cfo|coo|cmo|ceo)([^a-z]|$)/i;
+const NO_MANAGER = new Set(['', 'none', 'null', 'top', 'nobody', 'root']);
+
+/**
+ * Fills `reportsTo`, `level`, `tier` and `team` on every agent.
+ *
+ *  - An explicit `reportsTo` (an agent id or name) always wins; `null` makes the
+ *    agent a top-level agent.
+ *  - Otherwise the main agent is the root, each department's head (flagged
+ *    `lead: true`, or recognised by a title such as "Head", "Lead", "Director",
+ *    "Boshliq", "Rahbar") reports to the main agent, and everyone else
+ *    reports to their department head (or straight to the main agent).
+ *
+ * tier: chief = top of the tree, manager = has people reporting to them, doer = the rest.
+ */
+function resolveHierarchy(agents, hints, mainId, issues) {
+  const byId = new Map(agents.map((a) => [a.id, a]));
+  const byName = new Map(agents.map((a) => [slug(a.name), a]));
+  const main = byId.get(mainId);
+
+  // department heads (used for agents without an explicit manager)
+  const headOf = new Map();
+  const deptIds = [...new Set(agents.map((a) => a.department))];
+  for (const dept of deptIds) {
+    const members = agents.filter((a) => a.department === dept);
+    if (main && main.department === dept) {
+      headOf.set(dept, main.id);
+      continue;
+    }
+    const flagged = members.find((a) => hints.get(a.id)?.lead);
+    const named = flagged || members.find((a) => HEAD_RE.test(a.role)) || members.find((a) => HEAD_RE.test(a.name));
+    if (named) headOf.set(dept, named.id);
+  }
+
+  for (const a of agents) {
+    const hint = hints.get(a.id);
+    let parent = null;
+    if (hint?.explicit) {
+      const v = hint.reportsTo;
+      if (v === null || v === undefined || NO_MANAGER.has(String(v).trim().toLowerCase())) {
+        parent = null;
+      } else {
+        const target = byId.get(slug(v)) || byName.get(slug(v));
+        if (!target) issues.push(`agent "${a.id}": reportsTo "${v}" is not an agent in this roster`);
+        else if (target.id === a.id) issues.push(`agent "${a.id}": cannot report to itself`);
+        else parent = target.id;
+      }
+    } else if (a.id === mainId) {
+      parent = null;
+    } else {
+      const head = headOf.get(a.department);
+      if (head && head !== a.id) parent = head;
+      else if (mainId && mainId !== a.id) parent = mainId;
+    }
+    a.reportsTo = parent;
+  }
+
+  // cycles
+  for (const a of agents) {
+    const seen = new Set([a.id]);
+    for (let cur = byId.get(a.reportsTo); cur; cur = byId.get(cur.reportsTo)) {
+      if (seen.has(cur.id)) {
+        issues.push(`reporting cycle: "${a.id}" is (indirectly) its own manager`);
+        return;
+      }
+      seen.add(cur.id);
+    }
+  }
+
+  const team = new Map(agents.map((a) => [a.id, []]));
+  for (const a of agents) if (a.reportsTo) team.get(a.reportsTo).push(a.id);
+  const depth = (a) => (a.reportsTo ? 1 + depth(byId.get(a.reportsTo)) : 0);
+  for (const a of agents) {
+    a.level = depth(a);
+    a.team = team.get(a.id);
+    a.tier = a.level === 0 ? 'chief' : a.team.length ? 'manager' : 'doer';
+  }
+}
+
 /**
  * Normalize user input into the canonical roster. Throws RosterError with all
  * problems listed, never silently drops an agent.
@@ -178,6 +263,7 @@ export function normalizeRoster(input) {
   // Agents ----------------------------------------------------------------
   const seen = new Set();
   const agents = [];
+  const hints = new Map(); // agent id -> { reportsTo, explicit, lead }
   rawAgents.slice(0, MAX_AGENTS).forEach((a, i) => {
     if (!a || typeof a !== 'object') {
       issues.push(`agents[${i}] must be an object`);
@@ -196,6 +282,8 @@ export function normalizeRoster(input) {
     seen.add(id);
     const deptKey = slug(a.department || 'general');
     const dept = deptIndex.get(deptKey) || addDepartment(deptKey, str(a.department, 40) || undefined, undefined);
+    const key = 'reportsTo' in a ? 'reportsTo' : 'reports_to' in a ? 'reports_to' : null;
+    hints.set(id, { explicit: key !== null, reportsTo: key ? a[key] : undefined, lead: a.lead === true, index: i });
     agents.push({
       id,
       name,
@@ -209,15 +297,18 @@ export function normalizeRoster(input) {
     });
   });
 
+  const office = input.office && typeof input.office === 'object' ? input.office : {};
+  const wantedMain = slug(office.mainAgent || '');
+  const mainAgent = agents.some((a) => a.id === wantedMain) ? wantedMain : agents[0]?.id || '';
+  resolveHierarchy(agents, hints, mainAgent, issues);
+
   if (issues.length) throw new RosterError(issues);
 
-  const office = input.office && typeof input.office === 'object' ? input.office : {};
-  const mainAgent = slug(office.mainAgent || '');
   return {
     office: {
       title: str(office.title, 60) || 'Agent Office',
       subtitle: str(office.subtitle, 120),
-      mainAgent: agents.some((a) => a.id === mainAgent) ? mainAgent : agents[0]?.id || '',
+      mainAgent,
     },
     departments: departments.filter((d) => agents.some((a) => a.department === d.id)),
     agents,

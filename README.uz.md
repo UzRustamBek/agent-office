@@ -19,7 +19,8 @@ bir-biriga vazifa uzatadi va qaror kerak bo‘lganda sizga qo‘l ko‘taradi.</
 Agentlar ro‘yxati *kim borligini* aytadi. Ofisga bir qarash esa *kim band, kim qotib qolgan va kim sizni kutayotganini* ko‘rsatadi. Agent Office siz allaqachon ishlatayotgan agentlarni kichik jonli joyga aylantiradi:
 
 - **Holatni bir qarashda ko‘ring.** Yozmoqda, o‘qimoqda, qidirmoqda, buyruq bajarmoqda, o‘ylayapti, topshiriq bermoqda, sizni kutmoqda, ruxsat so‘ramoqda, tugatdi, xatolik. Har birining o‘z holati, ekrani, rangi va pufakchasi bor.
-- **Jamoaviy ishni ko‘ring.** Bir agent boshqasiga vazifa bersa, ofis bo‘ylab konvert uchib o‘tadi.
+- **Jamoaviy ishni ko‘ring.** Bir agent boshqasiga vazifa bersa, konvert tashkilotingizning hisobot chiziqlari bo‘ylab uchib o‘tadi.
+- **Kim kimga bo‘ysunishini ko‘ring.** Rahbar eng tepada, bo‘limlar uning ostida, har bir bo‘ysunish darajasi esa stollarning alohida qatorida.
 - **Qachon aralashishni biling.** «Sizni kutmoqda» hisoblagichi miltillaydi, personaj qo‘lini ko‘taradi, xohlasangiz signal ham chalinadi.
 - **Hammasi sizniki.** Bo‘limlar, nomlar, rollar, ko‘rinish va asboblar oddiy JSON fayldan olinadi yoki to‘g‘ridan-to‘g‘ri Claude Code agent papkalaringizdan import qilinadi.
 
@@ -63,6 +64,7 @@ node bin/agent-office.js start
       "name": "Direktor",
       "role": "Boshqaruvchi",
       "department": "ish",
+      "reportsTo": null,
       "model": "opus",
       "tools": ["Task", "Read"],
       "look": { "hair": "short", "accessory": "glasses" }
@@ -73,7 +75,7 @@ node bin/agent-office.js start
 
 Tayyor o‘zbekcha namuna: `node bin/agent-office.js start --demo --agents examples/uz-team.json`.
 
-Uni `agents.json` (yoki `agents.local.json`) nomi bilan buyruq ishga tushirilgan papkaga saqlang yoki `--agents fayl.json` bering. Fayl kuzatiladi: tahrirlasangiz ofis o‘sha zahoti yangilanadi. To‘liq ma’lumot: [docs/AGENTS-FORMAT.md](docs/AGENTS-FORMAT.md). Hosting qilingan demoda roster faylini sahifaga **tashlab** jamoangizni darhol ko‘rishingiz ham mumkin.
+Uni `agents.json` (yoki `agents.local.json`) nomi bilan buyruq ishga tushirilgan papkaga saqlang yoki `--agents fayl.json` bering. Fayl kuzatiladi: tahrirlasangiz ofis o‘sha zahoti yangilanadi. `reportsTo` tashkiliy sxemani quradi (yozilmasa o‘zi aniqlanadi). To‘liq ma’lumot: [docs/AGENTS-FORMAT.md](docs/AGENTS-FORMAT.md). Hosting qilingan demoda roster faylini sahifaga **tashlab** jamoangizni darhol ko‘rishingiz ham mumkin.
 
 ## Claude Code ga ulash (jonli rejim)
 
@@ -111,8 +113,9 @@ Protokol: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#event-protocol).
 | | |
 |---|---|
 | **Ofis** | Bo‘limlar gilamli zonalarga aylanadi, har agentga bitta stol; yana dam olish xonasi, oshxona va majlis xonasi. Maket rosterdan avtomatik quriladi (1 dan 120 gacha agent). |
+| **Ierarxiya** | Yurish mumkin bo‘lgan tashkiliy sxema: tepada rahbar, so‘ng bo‘lim boshliqlari, so‘ng ishni bajaruvchilar; ular hisobot chiziqlari bilan bog‘langan. Rahbar va boshliqlarni tilla va po‘lat rangli stol yorlig‘i ajratib turadi. [Ierarxiya](docs/AGENTS-FORMAT.md#hierarchy). |
 | **Personajlar** | To‘liq kod bilan chizilgan (rasm fayllari yo‘q). 6 teri rangi, 8 soch turmagi, aksessuarlar, jamoa rangidagi ko‘ylak, to‘rt yo‘nalishda yurish va har holat uchun alohida poza. |
-| **Hayot** | Band bo‘lmagan agentlar kofe va divan tanaffusiga chiqadi, ish kelganda qaytadi. |
+| **Hayot** | Ishlayotgan agentlar stolida o‘tiradi. Band bo‘lmaganlar kofe yoki divanga borishi mumkin (standart bo‘yicha kamdan-kam; *Tanaffuslar* sozlamasi bilan hech qachon yoki tez-tez qilish mumkin), ish kelsa qaytadi. |
 | **Ekranlar** | Har monitor agent nima qilayotganini ko‘rsatadi: kod, terminal, hujjat, qidiruv natijalari, topshiriq grafi, «?» yoki «!» belgisi. |
 | **Ro‘yxat paneli** | Qidiruv, filtr (faol / sizni kutmoqda / bo‘sh), bo‘limlar bo‘yicha guruhlar, jonli faollik matni. |
 | **Tafsilot paneli** | Rol, model, asboblar, ko‘nikmalar, hisoblagichlar, faol vaqt, oxirgi harakatlar, kuzatuv kamerasi. |

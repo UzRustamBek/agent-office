@@ -1,6 +1,6 @@
 {
   "name": "agent-office",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Your personal AI agents, alive in a tiny pixel-art office. Zero dependencies.",
   "type": "module",
   "license": "MIT",

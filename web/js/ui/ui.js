@@ -219,8 +219,9 @@ export class UI {
     this.groups.clear();
     const frag = document.createDocumentFragment();
     for (const dept of roster.departments) {
-      const members = roster.agents.filter((a) => a.department === dept.id);
+      const members = roster.agents.filter((a) => a.department === dept.id).sort((a, b) => (a.level || 0) - (b.level || 0));
       if (!members.length) continue;
+      const base = members[0].level || 0;
       const count = h('span', { class: 'count' });
       const group = h(
         'details',
@@ -229,6 +230,7 @@ export class UI {
       );
       for (const a of members) {
         const row = this._buildRow(a);
+        row.el.dataset.indent = String(Math.min(3, Math.max(0, (a.level || 0) - base)));
         group.append(row.el);
         this.rows.set(a.id, row);
       }
@@ -255,7 +257,8 @@ export class UI {
       {
         class: 'agent',
         type: 'button',
-        dataset: { id: agent.id },
+        dataset: { id: agent.id, tier: agent.tier || 'doer' },
+        title: this.t(`tier.${agent.tier || 'doer'}`),
         onclick: () => this.app.actions.selectAgent(agent.id, { focus: true }),
       },
       canvas,
@@ -372,6 +375,16 @@ export class UI {
     actions.append(copy);
 
     const section = (title, ...kids) => h('section', { class: 'd-sec' }, h('h3', { text: title }), ...kids);
+    const byId = new Map(this.state.roster.agents.map((a) => [a.id, a]));
+    const person = (a) => h('button', { class: 'tag person', type: 'button', dataset: { tier: a.tier || 'doer' }, text: a.name, onclick: () => this.app.actions.selectAgent(a.id, { focus: true }) });
+    const boss = agent.reportsTo ? byId.get(agent.reportsTo) : null;
+    const reports = (agent.team || []).map((x) => byId.get(x)).filter(Boolean);
+    const hierarchy = h(
+      'div',
+      { class: 'hier' },
+      h('div', {}, h('small', { text: this.t('drawer.reportsTo') }), boss ? person(boss) : h('span', { class: 'muted', text: this.t('drawer.noManager') })),
+      reports.length ? h('div', {}, h('small', { text: `${this.t('drawer.team')} (${reports.length})` }), h('div', { class: 'tags' }, reports.map(person))) : null,
+    );
     const tagList = (items, soft) => h('div', { class: 'tags' }, items.map((x) => h('span', { class: `tag${soft ? ' soft' : ''}`, text: x })));
 
     const d = this.$('drawer');
@@ -381,11 +394,12 @@ export class UI {
         'div',
         { class: 'd-head' },
         canvas,
-        h('div', {}, h('h2', { text: agent.name }), h('p', { text: agent.role || '' }), h('div', { class: 'badges' }, h('span', { class: 'badge', style: { '--st': dept?.color } }, h('i'), h('span', { text: dept?.id === 'guests' ? this.t('dept.guests') : dept?.name || '' })), agent.model ? h('span', { class: 'badge' }, h('span', { text: agent.model })) : null)),
+        h('div', {}, h('h2', { text: agent.name }), h('p', { text: agent.role || '' }), h('div', { class: 'badges' }, h('span', { class: 'badge', style: { '--st': dept?.color } }, h('i'), h('span', { text: dept?.id === 'guests' ? this.t('dept.guests') : dept?.name || '' })), h('span', { class: 'badge tier', dataset: { tier: agent.tier || 'doer' } }, h('span', { text: this.t(`tier.${agent.tier || 'doer'}`) })), agent.model ? h('span', { class: 'badge' }, h('span', { text: agent.model })) : null)),
       ),
       h('div', { class: 'badges' }, badge),
       now,
       agent.description ? section(this.t('drawer.about'), h('p', { text: agent.description })) : null,
+      section(this.t('drawer.hierarchy'), hierarchy),
       agent.tools?.length ? section(this.t('drawer.tools'), tagList(agent.tools)) : null,
       agent.skills?.length ? section(this.t('drawer.skills'), tagList(agent.skills, true)) : null,
       section(this.t('drawer.stats'), stats),
@@ -499,6 +513,7 @@ export class UI {
       field(t('settings.theme'), select('theme', [['auto', t('settings.theme.auto')], ['dark', t('settings.theme.dark')], ['light', t('settings.theme.light')]])),
       field(t('settings.names'), select('names', [['always', t('settings.names.always')], ['hover', t('settings.names.hover')], ['off', t('settings.names.off')]])),
       field(t('settings.lighting'), select('lighting', [['auto', t('settings.lighting.auto')], ['day', t('settings.lighting.day')], ['night', t('settings.lighting.night')]])),
+      field(t('settings.breaks'), select('breaks', [['off', t('settings.breaks.off')], ['rare', t('settings.breaks.rare')], ['normal', t('settings.breaks.normal')]]), t('settings.breaks.hint')),
       field(t('settings.bubbles'), toggle('bubbles')),
       field(t('settings.motion'), toggle('reduceMotion'), t('settings.motion.hint')),
       field(t('settings.sound'), toggle('sound'), t('settings.sound.hint')),

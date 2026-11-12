@@ -138,6 +138,10 @@ export function ensureAgent(state, id, now = Date.now()) {
     tools: [],
     skills: [],
     look: null,
+    reportsTo: roster.office.mainAgent || null,
+    level: 1,
+    tier: 'doer',
+    team: [],
     guest: true,
   });
   state.agents[id] = blankAgent(id, now);

@@ -49,6 +49,7 @@ export class OfficeRenderer {
     this.roster = roster;
     this.deptColor = new Map(roster.departments.map((d) => [d.id, d.color]));
     this.agentColor = new Map(roster.agents.map((a) => [a.id, this.deptColor.get(a.department) || '#6c8cff']));
+    this.agentTier = new Map(roster.agents.map((a) => [a.id, a.tier || 'doer']));
     this.staticKey = '';
     this.staticCanvas.width = layout.pxW;
     this.staticCanvas.height = layout.pxH;
@@ -438,7 +439,9 @@ export class OfficeRenderer {
       if (showName) {
         const size = clamp(10.5 * u, 9, 14);
         ctx.font = `600 ${size}px ui-sans-serif, system-ui, "Segoe UI", sans-serif`;
-        const name = ch.name;
+        const tier = this.agentTier.get(ch.id);
+        const mark = tier === 'chief' ? '★ ' : tier === 'manager' ? '◆ ' : '';
+        const name = mark + ch.name;
         const tw = ctx.measureText(name).width;
         const pad = 5 * u;
         const w = tw + pad * 2 + 8 * u;
